@@ -137,7 +137,7 @@ export default function AdminReportsPage() {
         </ButtonGroup>
       </div>
 
-      <Row xs={2} md={4} className="g-3 mb-4">
+      <Row xs={2} md={4} className="g-3 mb-4" data-testid="stat-tiles">
         {tiles.map((tile) => (
           <Col key={tile.label}>
             <Card className="border-0 shadow-sm h-100">
@@ -191,12 +191,24 @@ export default function AdminReportsPage() {
                   }
                   cursor={{ stroke: 'var(--viz-grid)', strokeWidth: 1 }}
                 />
-                {/* 2px line, 8px markers — thin marks, generous hit targets. */}
+                {/*
+                  2px line, 8px active marker — thin marks, generous hit targets.
+
+                  isAnimationActive={false} on purpose. A dashboard re-renders on every filter
+                  change and re-animating each time is noise, not delight. It also makes the chart
+                  deterministic: with animation on, anything that re-measures the container (a
+                  resize, or a full-page screenshot) restarts the draw and can capture the marks
+                  at zero progress — which looks exactly like a broken chart.
+
+                  type="linear", not a smoothed curve: these are DAILY totals, and a spline would
+                  draw revenue values between the days that never existed.
+                */}
                 <Line
-                  type="monotone"
+                  type="linear"
                   dataKey="revenue"
                   stroke="var(--viz-series-1)"
                   strokeWidth={2}
+                  isAnimationActive={false}
                   dot={{ r: 4, fill: 'var(--viz-series-1)', strokeWidth: 0 }}
                   activeDot={{ r: 6, stroke: 'var(--viz-surface)', strokeWidth: 2 }}
                 />
@@ -255,6 +267,7 @@ export default function AdminReportsPage() {
                       fill="var(--viz-series-1)"
                       radius={[0, 4, 4, 0]}
                       maxBarSize={18}
+                      isAnimationActive={false}
                     />
                   </BarChart>
                 </ResponsiveContainer>

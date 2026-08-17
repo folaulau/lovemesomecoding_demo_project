@@ -91,9 +91,7 @@ public class ProductServiceImpl implements ProductService {
             product.setDisplayOrder(dto.displayOrder());
         }
 
-        // Replace the sizes wholesale. orphanRemoval on the entity deletes the rows that are gone.
-        product.getSizes().clear();
-        applySizes(product, dto);
+        mergeSizes(product, dto);
 
         return mapper.mapProductToProductDTO(productDAO.save(product));
     }
@@ -116,17 +114,63 @@ public class ProductServiceImpl implements ProductService {
         productDAO.save(product);
     }
 
+    /** Create path: the product has no sizes yet, so every requested size is new. */
     private void applySizes(Product product, ProductCreateDTO dto) {
+        for (ProductCreateDTO.SizeDTO sizeDTO : validated(dto)) {
+            product.addSize(ProductSize.builder()
+                    .size(sizeDTO.size())
+                    .price(sizeDTO.price())
+                    .build());
+        }
+    }
+
+    /**
+     * Update path: reconcile the existing rows in place rather than clearing and re-adding.
+     *
+     * <p>Two reasons, both of which bit for real:
+     *
+     * <ol>
+     *   <li><b>It used to fail with a 500.</b> Clearing the collection and re-adding the same sizes
+     *       made Hibernate schedule the INSERTs before the DELETEs in one flush, so the new rows
+     *       collided with the old ones on the unique key:
+     *       {@code Duplicate entry '42-SMALL' for key 'uk_product_size'}. Forcing a flush between
+     *       the two would also work, but that just papers over needless churn.
+     *   <li><b>It would change the public UUIDs.</b> Every size row now carries a {@code publicId}
+     *       that clients can hold. Delete-and-recreate mints a brand new one, so merely editing a
+     *       price would silently invalidate identifiers already handed out.
+     * </ol>
+     */
+    private void mergeSizes(Product product, ProductCreateDTO dto) {
+        List<ProductCreateDTO.SizeDTO> requested = validated(dto);
+
+        // 1. update the sizes that already exist; add the ones that do not
+        for (ProductCreateDTO.SizeDTO sizeDTO : requested) {
+            product.getSizes().stream()
+                    .filter(existing -> existing.getSize() == sizeDTO.size())
+                    .findFirst()
+                    .ifPresentOrElse(
+                            existing -> existing.setPrice(sizeDTO.price()),
+                            () -> product.addSize(ProductSize.builder()
+                                    .size(sizeDTO.size())
+                                    .price(sizeDTO.price())
+                                    .build()));
+        }
+
+        // 2. drop any size no longer requested — orphanRemoval turns this into a DELETE
+        List<SizeName> keep =
+                requested.stream().map(ProductCreateDTO.SizeDTO::size).toList();
+        product.getSizes().removeIf(existing -> !keep.contains(existing.getSize()));
+    }
+
+    /** A product cannot be sold twice in the same size. */
+    private List<ProductCreateDTO.SizeDTO> validated(ProductCreateDTO dto) {
         List<SizeName> seen = new ArrayList<>();
         for (ProductCreateDTO.SizeDTO sizeDTO : dto.sizes()) {
             if (seen.contains(sizeDTO.size())) {
                 throw ApiException.badRequest("Duplicate size: " + sizeDTO.size());
             }
             seen.add(sizeDTO.size());
-            product.addSize(ProductSize.builder()
-                    .size(sizeDTO.size())
-                    .price(sizeDTO.price())
-                    .build());
         }
+        return dto.sizes();
     }
 }

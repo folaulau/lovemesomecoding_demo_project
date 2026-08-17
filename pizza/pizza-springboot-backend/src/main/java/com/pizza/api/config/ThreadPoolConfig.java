@@ -1,5 +1,7 @@
 package com.pizza.api.config;
 
+import java.util.Map;
+import java.util.concurrent.ThreadPoolExecutor;
 import lombok.extern.slf4j.Slf4j;
 import org.slf4j.MDC;
 import org.springframework.aop.interceptor.AsyncUncaughtExceptionHandler;
@@ -13,9 +15,6 @@ import org.springframework.scheduling.annotation.SchedulingConfigurer;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 import org.springframework.scheduling.config.ScheduledTaskRegistrar;
-
-import java.util.Map;
-import java.util.concurrent.ThreadPoolExecutor;
 
 @Slf4j
 @Configuration

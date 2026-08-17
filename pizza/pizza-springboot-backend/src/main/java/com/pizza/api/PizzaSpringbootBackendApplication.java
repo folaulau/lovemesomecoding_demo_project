@@ -1,5 +1,10 @@
 package com.pizza.api;
 
+import java.lang.management.ManagementFactory;
+import java.net.InetAddress;
+import java.time.LocalDateTime;
+import java.util.Arrays;
+import java.util.TimeZone;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.CommandLineRunner;
@@ -11,12 +16,6 @@ import org.springframework.core.annotation.Order;
 import org.springframework.core.env.Environment;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
-import java.lang.management.ManagementFactory;
-import java.net.InetAddress;
-import java.time.LocalDateTime;
-import java.util.Arrays;
-import java.util.TimeZone;
-
 @SpringBootApplication
 public class PizzaSpringbootBackendApplication {
 
@@ -26,7 +25,8 @@ public class PizzaSpringbootBackendApplication {
     }
 
     @Autowired
-    @Qualifier(value = "taskExecutor") private ThreadPoolTaskExecutor taskExecutor;
+    @Qualifier(value = "taskExecutor")
+    private ThreadPoolTaskExecutor taskExecutor;
 
     @Order(Integer.MAX_VALUE)
     @Bean

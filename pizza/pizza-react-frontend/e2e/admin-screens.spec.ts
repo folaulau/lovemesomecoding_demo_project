@@ -5,7 +5,8 @@ test('capture the admin screens', async ({ page }) => {
   test.setTimeout(90_000);
   await page.setViewportSize({ width: 1280, height: 1000 });
 
-  await page.goto('/login');
+  // Go to /admin first: ProtectedRoute stashes it as the post-login destination.
+  await page.goto('/admin');
   await page.getByLabel('Email').fill('admin@pizza.test');
   await page.getByLabel('Password').fill('admin123');
   await page.getByRole('button', { name: 'Sign in' }).click();
