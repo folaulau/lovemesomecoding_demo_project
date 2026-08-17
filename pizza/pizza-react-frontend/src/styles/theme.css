@@ -1,0 +1,152 @@
+/*
+ * Pizza Hut-flavoured theme layered on top of Bootstrap 5.3.
+ *
+ * Bootstrap 5.3 exposes its design tokens as CSS custom properties, so the palette can be
+ * retuned by redefining variables rather than by fighting the defaults with !important.
+ * That is the whole reason this file is short.
+ */
+
+:root {
+  --pizza-red: #d8102a;
+  --pizza-red-dark: #a60d20;
+  --pizza-black: #231f20;
+  --pizza-cream: #fff8f0;
+
+  /* Bootstrap token overrides — every btn-primary, link and focus ring follows these. */
+  --bs-primary: var(--pizza-red);
+  --bs-primary-rgb: 216, 16, 42;
+  --bs-link-color: var(--pizza-red);
+  --bs-link-hover-color: var(--pizza-red-dark);
+  --bs-body-font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+}
+
+body {
+  background-color: var(--pizza-cream);
+  color: var(--pizza-black);
+}
+
+/* Bootstrap's .btn-primary reads its own set of variables, so it needs them restated. */
+.btn-primary {
+  --bs-btn-bg: var(--pizza-red);
+  --bs-btn-border-color: var(--pizza-red);
+  --bs-btn-hover-bg: var(--pizza-red-dark);
+  --bs-btn-hover-border-color: var(--pizza-red-dark);
+  --bs-btn-active-bg: var(--pizza-red-dark);
+  --bs-btn-active-border-color: var(--pizza-red-dark);
+  --bs-btn-disabled-bg: var(--pizza-red);
+  --bs-btn-disabled-border-color: var(--pizza-red);
+  font-weight: 700;
+}
+
+.btn-outline-primary {
+  --bs-btn-color: var(--pizza-red);
+  --bs-btn-border-color: var(--pizza-red);
+  --bs-btn-hover-bg: var(--pizza-red);
+  --bs-btn-hover-border-color: var(--pizza-red);
+  --bs-btn-active-bg: var(--pizza-red);
+  --bs-btn-active-border-color: var(--pizza-red);
+  font-weight: 600;
+}
+
+.text-pizza-red {
+  color: var(--pizza-red) !important;
+}
+
+.bg-pizza-black {
+  background-color: var(--pizza-black) !important;
+}
+
+/* ---------------------------------------------------------------- navbar */
+
+.pizza-navbar {
+  background-color: var(--pizza-black);
+  box-shadow: 0 2px 8px rgb(0 0 0 / 25%);
+}
+
+.pizza-brand {
+  font-weight: 800;
+  font-size: 1.5rem;
+  letter-spacing: -0.5px;
+  color: #fff;
+}
+
+.pizza-brand span {
+  color: var(--pizza-red);
+}
+
+/* ---------------------------------------------------------------- hero */
+
+.pizza-hero {
+  background:
+    linear-gradient(120deg, rgb(35 31 32 / 92%) 0%, rgb(166 13 32 / 88%) 100%),
+    url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40"><circle cx="20" cy="20" r="3" fill="%23ffffff" opacity="0.08"/></svg>');
+  color: #fff;
+  padding: 4rem 0;
+}
+
+.pizza-hero h1 {
+  font-weight: 800;
+  letter-spacing: -1px;
+}
+
+/* ---------------------------------------------------------------- cards */
+
+.product-card {
+  border: 0;
+  border-radius: 0.75rem;
+  box-shadow: 0 2px 10px rgb(0 0 0 / 8%);
+  transition:
+    transform 0.15s ease,
+    box-shadow 0.15s ease;
+  height: 100%;
+}
+
+.product-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 20px rgb(0 0 0 / 14%);
+}
+
+/* Stand-in for real photography — the backend seeds image URLs that do not exist yet. */
+.product-thumb {
+  height: 160px;
+  border-radius: 0.75rem 0.75rem 0 0;
+  background: linear-gradient(135deg, #f6b73c 0%, var(--pizza-red) 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 3.5rem;
+}
+
+/* ---------------------------------------------------------------- misc */
+
+.size-option {
+  cursor: pointer;
+}
+
+.topping-chip {
+  cursor: pointer;
+  user-select: none;
+}
+
+.cart-badge {
+  position: absolute;
+  top: 0;
+  right: 0;
+  transform: translate(35%, -35%);
+}
+
+.sticky-summary {
+  position: sticky;
+  top: 1rem;
+}
+
+/* Respect users who have asked the OS to reduce animation. */
+@media (prefers-reduced-motion: reduce) {
+  .product-card {
+    transition: none;
+  }
+
+  .product-card:hover {
+    transform: none;
+  }
+}

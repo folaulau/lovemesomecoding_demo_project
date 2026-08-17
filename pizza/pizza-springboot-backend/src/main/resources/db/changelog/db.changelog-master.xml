@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <!--
+      This file is a MANIFEST ONLY. Every actual change lives in a formatted-SQL
+      file under sql/.
+
+      Why is the master XML when the changesets are SQL? Liquibase's formatted-SQL
+      format has no include/includeAll directive, so a .sql master cannot pull in
+      other files. The manifest has to be XML (or YAML/JSON); the changes stay SQL.
+
+      includeAll orders files by filename, which is why they are numerically prefixed.
+    -->
+    <includeAll path="db/changelog/sql" relativeToChangelogFile="false"/>
+
+</databaseChangeLog>

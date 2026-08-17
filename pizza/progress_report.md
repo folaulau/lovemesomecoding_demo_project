@@ -3,8 +3,17 @@
 Shared context for the pizza demo (React + Angular frontends, Spring Boot backend).
 Read this first when resuming work.
 
-**Status:** Phase 0 complete (stack de-risked). Nothing built yet beyond the scaffold.
+**Status:** Phases 0–2 complete. Backend + React UI both run; 14 backend tests and 9 e2e tests green.
 **Last updated:** 2026-08-17
+
+**Run the backend:** `cd pizza-springboot-backend && ./mvnw spring-boot:run` → http://localhost:8085
+· Swagger UI at http://localhost:8085/swagger-ui.html
+
+**Run the frontend:** `cd pizza-react-frontend && nvm use && npm run dev` → http://localhost:5173
+· `npm run test:e2e` — Playwright suite · `npm run screenshots` — regenerate `screenshots/`
+
+**Demo logins:** `admin@pizza.test` / `admin123` · `customer@pizza.test` / `pizza123`
+(the frontend still uses mock auth until Phase 4)
 
 ---
 
@@ -236,8 +245,8 @@ toast/notification component so that teaching point survives.
 | Phase | Contents | Status |
 |---|---|---|
 | **0** | Verify stack: springdoc, Security 7, Lombok+MapStruct, MySQL, Liquibase | ✅ **done** |
-| **1** | Real pom, Liquibase schema + seed changesets, entities/JPA layer | todo |
-| **2** | React frontend on **mock data** — full Pizza Hut look, cart Context, builder modal, checkout UI | todo |
+| **1** | Real pom, Liquibase schema + seed changesets, entities/JPA layer | ✅ **done** |
+| **2** | React frontend on **mock data** — full Pizza Hut look, cart Context, builder modal, checkout UI | ✅ **done** |
 | **3** | Backend endpoints: catalog, JWT auth, orders, Stripe, admin CRUD, reports | todo |
 | **4** | Integrate React → real API; wire Stripe Elements | todo |
 | **5** | Admin dashboard + reports UI (Recharts) | todo |
@@ -254,6 +263,110 @@ hand-clicking orders to populate it wastes time. Kept in their own SQL file
 
 ---
 
+## Phase 1 findings — schema + JPA layer (DONE)
+
+Boots clean on **port 8085**, 19 Liquibase changesets applied, Hibernate `ddl-auto=validate` passes
+(so the entities and the SQL schema provably agree), Swagger UI live, **14/14 tests green**,
+`spotless apply` run over all Java.
+
+Seeded: 14 products (8 pizzas + 6 drinks) · 42 size/price rows · 4 crusts · 12 toppings ·
+2 users · 18 backdated orders · 27 order items · 9 item toppings. Verified in SQL that
+`subtotal == SUM(line_total)` and `total == subtotal + tax + delivery_fee` for **all 18** orders.
+
+### ⚠️ Gotcha — MultipleBagFetchException
+The obvious entity graph is wrong:
+
+```java
+@EntityGraph(attributePaths = {"items", "items.toppings"})   // throws at query time
+```
+
+Hibernate refuses to join-fetch two `List` collections at once —
+`MultipleBagFetchException: cannot simultaneously fetch multiple bags`. A `List` (a "bag") has to
+preserve duplicates, so Hibernate cannot de-duplicate the cartesian product the way it can for a
+`Set`. This was caught by the tests, not by inspection.
+
+Fix used: fetch **one** collection in the graph, put `@BatchSize(25)` on
+`OrderItem.toppings`, and initialise it in a second step inside
+`CustomerOrderDAOImpl.findByIdWithItems`. Switching one side to `Set` also works, but changes
+ordering semantics.
+
+### Port note
+**8085**, because on this machine 8080 is held by another Java app and 8099 by the lovemesomecoding
+FastAPI admin API. A Boot app binds `*:port` on IPv6 while some servers bind `127.0.0.1` on IPv4,
+so a clashing `curl localhost:PORT` can silently hit the *other* app — that cost real time twice.
+
+### What exists now
+```
+com.pizza.api
+├── config    SecurityConfig (Security 7 lambda DSL, CORS, BCrypt), OpenApiConfig
+├── product   Product, ProductSize, ProductType, SizeName, Repository, DAO, DAOImpl
+├── topping   Topping, ToppingCategory, Repository, DAO, DAOImpl
+├── crust     Crust, Repository, DAO, DAOImpl
+├── user      User, UserRole, Repository, DAO, DAOImpl
+└── order     CustomerOrder, OrderItem, OrderItemTopping, OrderStatus, OrderType,
+              Repository, DAO, DAOImpl
+```
+
+Services, MapStruct mappers, DTOs and REST controllers are **not** written yet — those are Phase 3.
+`SecurityConfig` currently permits everything so the app is usable; the JWT filter and the
+`/api/admin/**` role check are marked with a TODO in that file.
+
+---
+
+## Phase 2 findings — React on mock data (DONE)
+
+Vite 8 + React 19.2 + TypeScript 6 + Bootstrap 5.3.8 / react-bootstrap 2.10.10 + React Router 7.
+Production build clean, **9/9 Playwright e2e tests green**, screenshots in `pizza-react-frontend/screenshots/`.
+
+Everything runs on `MOCK_MENU` in `src/mocks/menu.ts`, whose values match the Liquibase seed
+exactly — so Phase 4's swap to real API calls should change nothing on screen. `src/types/index.ts`
+is the shared contract; if the API DTOs drift from it, the build fails rather than the UI.
+
+### ⚠️ Node 22.12+ required — `.nvmrc` added
+Vite 8 depends on rolldown, whose native binding declares `engines: node >=22.12`. On Node 22.5.1
+npm **silently skips** the optional native dependency and the dev server dies with a misleading
+`Cannot find native binding … npm has a bug related to optional dependencies`. A clean reinstall
+does not fix it — the Node version is the actual cause.
+
+Resolved by `nvm install 22` (→ **v22.23.2**) plus a `.nvmrc`. Note the machine's `default` nvm
+alias was the floating `22`, so it now resolves to 22.23.2 instead of 22.5.1.
+`nvm alias default 22.5.1` pins it back if that is unwanted.
+
+### Gotcha — `<Button as={Link}>` does not typecheck
+react-bootstrap 2.x types `Button`'s `as` prop against intrinsic elements, so passing React
+Router's `Link` fails. Casting it to `never` "fixes" the error and then poisons the `to` prop.
+The clean answer is a plain `<Link className="btn btn-primary">` — identical markup and styling,
+no casts, and semantically better (it navigates, so it should be an anchor).
+
+### Gotcha — screenshots catch CSS transitions mid-flight
+The first captured build looked like the wrong size button was selected. It was not: computed
+styles showed the selected control at `rgba(216,16,42,0.008)` and the previous one at `0.992` —
+Bootstrap's 0.15s background transition, frozen mid-fade. Always settle transitions before
+capturing (`page.mouse.move` away + `waitForTimeout`) or screenshots will lie.
+
+### Fixed during QA
+The toast portal was anchored `bottom-end` and covered the cart drawer's Checkout button. Moved
+to `top-end`, `zIndex: 1100` so it clears Bootstrap's offcanvas (1045) and modal (1055).
+
+### Where each React concept lives
+| Concept | File |
+|---|---|
+| `createContext` + `useReducer` | `context/CartContext.tsx` |
+| Second context, `localStorage` sync, lazy `useState` init | `context/AuthContext.tsx` |
+| `createPortal` | `context/ToastContext.tsx` |
+| `React.memo` (+ why `useCallback` is required for it) | `components/ProductCard.tsx`, `pages/MenuPage.tsx` |
+| `useMemo` for derived live pricing | `components/PizzaBuilderModal.tsx` |
+| `useId`, `useRef` (React 19 ref-as-prop) | `components/PizzaBuilderModal.tsx`, `pages/CheckoutPage.tsx` |
+| Error boundary (the last required class component) | `components/ErrorBoundary.tsx` |
+| `lazy` + `Suspense` code splitting | `App.tsx` → `pages/admin/AdminDashboardPage.tsx` |
+| Guarded routes, `useSearchParams` as state | `components/ProtectedRoute.tsx`, `pages/MenuPage.tsx` |
+
+Code splitting is verified, not assumed: the build emits a separate
+`AdminDashboardPage-*.js` chunk.
+
+---
+
 ## Open questions
 
-- None blocking. Phase 1 can start.
+- None blocking. Next up is Phase 3 (backend services, DTOs, MapStruct mappers, REST controllers,
+  JWT auth, Stripe).
