@@ -205,3 +205,30 @@ export interface ReportDashboard {
   topProducts: Array<{ productName: string; unitsSold: number; revenue: number }>;
   statusBreakdown: Array<{ status: string; count: number }>;
 }
+
+// ---------------------------------------------------------------- admin write payloads
+
+/** POST/PUT /api/admin/products — matches the backend's ProductCreateDTO. */
+export interface ProductWriteRequest {
+  name: string;
+  description: string;
+  type: ProductType;
+  imageUrl: string | null;
+  active: boolean;
+  displayOrder: number;
+  sizes: Array<{ size: SizeName; price: number }>;
+}
+
+export interface ToppingWriteRequest {
+  name: string;
+  price: number;
+  category: ToppingCategory;
+  active: boolean;
+}
+
+export interface CrustWriteRequest {
+  name: string;
+  priceDelta: number;
+  active: boolean;
+  displayOrder: number;
+}

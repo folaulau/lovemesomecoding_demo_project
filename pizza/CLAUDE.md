@@ -7,6 +7,7 @@
 - Users should be able to login and order and pay for the order. Use Stripe for payment.
 - Users can also check out as a guest and does not have to login.
 - Users should be able to buy pizza with toppings and drinks and that is it. keep products at minimum.
+- Users should be able to have the option to save card for future use
 - Add admin dashboard so admin users can add pizza, toppings and drinks to the menu.
 - Add admin report dashboard so we can run reports
 
@@ -32,3 +33,9 @@ pk_test_51U5Wc3BeMrxmFducR7hlZ3YwT770EF2DFj8VPmEmqZ7r2sVasfWDRjWMQBvEqdWOSuIGg6R
 b. Secret key
 sk_test_51U5Wc3BeMrxmFducTHj1nBq34oFWbVXEEdbMgY8YMufv5FoZitr84A42bbmgCNXfTUL0QS8Xg532ifiEWHzSBI8y00SE87Njv0
 - pattern backend like this project /Users/folaukaveinga/Github/trademachine, don't worry about the frontend directory in this directory.
+
+## Test
+- Use playwright and test all flows through the UI.
+- Users select pizza, drinks, and place an order.
+- Users for payment put in 4242 4242 4242 4242 card from Stripe test cards.
+- Users should be able to have the option to save card for future use

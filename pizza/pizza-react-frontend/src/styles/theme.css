@@ -150,3 +150,58 @@ body {
     transform: none;
   }
 }
+
+/* ---------------------------------------------------------------- data viz
+ *
+ * Chart roles as tokens, so the chart code is written against meaning rather than raw hex and a
+ * palette change is one edit here.
+ *
+ * --viz-series-1 is the brand red. It was run through the palette validator against the chart
+ * surface before use: it passes the lightness band, the chroma floor and >= 3:1 contrast.
+ * Every chart below plots a SINGLE series, so there is no colorblind-separation problem to solve —
+ * the categories are named on the axis, not encoded in hue. Colouring each bar differently would
+ * be decoration, not information.
+ *
+ * This app is deliberately light-only (see the palette at the top of this file), so there is no
+ * dark-mode step to validate.
+ */
+.viz-root {
+  --viz-surface: #ffffff;
+  --viz-series-1: #d8102a;
+  --viz-text-primary: #231f20;
+  --viz-text-secondary: #6c6a68;
+  --viz-grid: #eceae7;
+}
+
+/* Recessive axes and gridlines — the data should be the loudest thing in the frame. */
+.viz-root .recharts-cartesian-axis-line,
+.viz-root .recharts-cartesian-axis-tick-line {
+  stroke: var(--viz-grid);
+}
+
+.viz-root .recharts-cartesian-grid line {
+  stroke: var(--viz-grid);
+}
+
+.viz-tooltip {
+  background: var(--viz-surface);
+  border: 1px solid var(--viz-grid);
+  border-radius: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  box-shadow: 0 4px 14px rgb(0 0 0 / 10%);
+  font-size: 0.8125rem;
+}
+
+.viz-tooltip .viz-tooltip-label {
+  color: var(--viz-text-secondary);
+  margin-bottom: 0.25rem;
+}
+
+.viz-tooltip .viz-tooltip-value {
+  color: var(--viz-text-primary);
+  font-weight: 700;
+}
+
+.admin-nav .nav-link.active {
+  font-weight: 700;
+}

@@ -25,7 +25,12 @@ import { OrdersPage } from './pages/OrdersPage';
  *
  * The lazily-imported module must have a DEFAULT export.
  * ========================================================================== */
-const AdminDashboardPage = lazy(() => import('./pages/admin/AdminDashboardPage'));
+const AdminLayout = lazy(() => import('./pages/admin/AdminLayout'));
+const AdminReportsPage = lazy(() => import('./pages/admin/AdminReportsPage'));
+const AdminProductsPage = lazy(() => import('./pages/admin/AdminProductsPage'));
+const AdminToppingsPage = lazy(() => import('./pages/admin/AdminToppingsPage'));
+const AdminCrustsPage = lazy(() => import('./pages/admin/AdminCrustsPage'));
+const AdminOrdersPage = lazy(() => import('./pages/admin/AdminOrdersPage'));
 
 export default function App() {
   // The drawer's open/closed state lives here because both the navbar (which opens it) and the
@@ -66,15 +71,28 @@ export default function App() {
                 }
               />
 
-              {/* Signed-in ADMINS only. */}
+              {/*
+                Signed-in ADMINS only.
+
+                REACT ROUTER CONCEPT: a layout route. AdminLayout renders the shell plus an
+                <Outlet />; the children below render into it. Guarding the PARENT means every
+                admin page inherits the check — a new tab cannot be added unprotected by accident.
+              */}
               <Route
                 path="/admin"
                 element={
                   <ProtectedRoute requireAdmin>
-                    <AdminDashboardPage />
+                    <AdminLayout />
                   </ProtectedRoute>
                 }
-              />
+              >
+                {/* `index` is the route shown at /admin itself. */}
+                <Route index element={<AdminReportsPage />} />
+                <Route path="products" element={<AdminProductsPage />} />
+                <Route path="toppings" element={<AdminToppingsPage />} />
+                <Route path="crusts" element={<AdminCrustsPage />} />
+                <Route path="orders" element={<AdminOrdersPage />} />
+              </Route>
 
               <Route
                 path="*"
