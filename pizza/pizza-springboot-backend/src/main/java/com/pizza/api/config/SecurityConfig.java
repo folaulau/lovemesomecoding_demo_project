@@ -68,6 +68,12 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/products/**", "/api/toppings/**", "/api/crusts/**")
                         .permitAll()
 
+                        // ---- cart ----------------------------------------------------------
+                        // Public, like guest checkout — you do not need an account to fill a
+                        // basket. The cart's unguessable UUID is what protects it.
+                        .requestMatchers("/api/carts", "/api/carts/**")
+                        .permitAll()
+
                         // ---- orders --------------------------------------------------------
                         // Specific first: order history needs a real account.
                         .requestMatchers(HttpMethod.GET, "/api/orders/mine")

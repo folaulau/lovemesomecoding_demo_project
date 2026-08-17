@@ -3,15 +3,16 @@
 Shared context for the pizza demo (React + Angular frontends, Spring Boot backend).
 Read this first when resuming work.
 
-**Status:** Phases 0–4 complete. The React app now runs entirely against the real API with Stripe
-Elements. **46 backend tests + 12 e2e tests + 1 payment integration test, all green.**
+**Status:** Phases 0–5 complete. Full admin CRUD and a charted reports dashboard are live.
+**55 backend tests + 23 Playwright tests, all green.**
 **Last updated:** 2026-08-17
 
 **Run the backend:** `cd pizza-springboot-backend && ./mvnw spring-boot:run` → http://localhost:8085
 · Swagger UI at http://localhost:8085/swagger-ui.html
 
 **Run the frontend:** `cd pizza-react-frontend && nvm use && npm run dev` → http://localhost:5173
-· `npm run test:e2e` — Playwright suite (**needs the backend running**)
+· `npm run test:e2e` — customer flows · `npm run test:admin` — admin CRUD + reports
+  (**both need the backend running**)
 · `STRIPE_SECRET_KEY=sk_test_… npm run test:payment` — payment integration
 · `npm run screenshots` — regenerate `screenshots/`
 
@@ -252,7 +253,7 @@ toast/notification component so that teaching point survives.
 | **2** | React frontend on **mock data** — full Pizza Hut look, cart Context, builder modal, checkout UI | ✅ **done** |
 | **3** | Backend endpoints: catalog, JWT auth, orders, Stripe, admin CRUD, reports | ✅ **done** |
 | **4** | Integrate React → real API; wire Stripe Elements | ✅ **done** |
-| **5** | Admin dashboard + reports UI (Recharts) | todo |
+| **5** | Admin dashboard + reports UI (Recharts) | ✅ **done** |
 | **6** | QA: tests to ~90%, Playwright demo, `spotless apply` | todo |
 | **7** | Angular frontend against the same API | todo |
 
@@ -573,9 +574,69 @@ our record. The client never tells the server an order is paid — anyone can ca
 
 ---
 
+## Phase 5 findings — admin CRUD + reports dashboard (DONE)
+
+`/admin` is now a **layout route** with five tabs: Reports · Products · Toppings · Crusts · Orders.
+Guarding the PARENT route means every tab inherits the ADMIN check — a new tab cannot be added
+unprotected by accident.
+
+Full CRUD for products (incl. per-size prices), toppings and crusts; order status transitions;
+a time-ranged reports dashboard (7 / 30 / 90 days).
+
+### ⚠️ BUG FOUND AND FIXED — every product edit returned a 500
+Updating a product used to `clear()` its sizes and re-add them. Hibernate schedules the INSERTs
+**before** the DELETEs in one flush, so the new rows collided with the old ones:
+
+```
+Duplicate entry '42-SMALL' for key 'uk_product_size'
+```
+
+Fixed by reconciling in place (`mergeSizes`) instead of delete-and-recreate. A flush between the
+two would also have worked, but merging is better for a second reason: **size rows now carry a
+public UUID**, and recreating them would mint new ids, so editing a price would silently
+invalidate identifiers already handed out. Guarded by `ProductServiceImplTest`.
+
+### ⚠️ The IDE was serving stale classes
+While debugging the above, the API kept returning
+`java.lang.Error: Unresolved compilation problem` even though `./mvnw compile` said BUILD SUCCESS.
+The IDE had a stale index from the `common` → `exception` package move and was compiling broken
+classes into `target/classes`, which `spring-boot:run` then loaded. **`./mvnw clean compile` before
+running** if the API misbehaves in a way the source cannot explain.
+
+### Charts — decisions, and why
+Recharts, lazy-loaded. Code splitting pays for itself here: the 379 KB reports chunk is downloaded
+only by admins, never by customers.
+
+- **Headline numbers are stat tiles, not a chart.** Four unrelated values are read fastest as text.
+- **One y-axis, never two.** Orders and revenue are both available; plotting them on a dual axis
+  invents correlations, so order count rides along in the tooltip instead.
+- **One series per chart, so no legend** — the title names it, and the categories are labelled on
+  the axis. Colouring each bar differently would be decoration, not information.
+- **`type="linear"`, not a smoothed curve.** These are DAILY totals; a spline would draw revenue
+  values between days that never existed.
+- **Orders-by-status is a table with inline bars**, not a pie — five labelled counts read more
+  precisely as numbers, and it doubles as the accessible view.
+- The brand red `#d8102a` was run through the palette validator against the chart surface before
+  use (lightness band, chroma floor, ≥3:1 contrast — all pass). The app is deliberately light-only,
+  so there is no dark step to validate.
+
+### Gotcha — charts looked empty in screenshots
+The marks were rendered correctly (valid path data, computed fill `rgb(216,16,42)`) but invisible
+in `fullPage` captures: a full-page screenshot resizes the viewport, `ResponsiveContainer`
+re-measures, and Recharts restarts its animation from zero. Set `isAnimationActive={false}` — which
+is right for a dashboard anyway, since re-animating on every filter change is noise.
+
+### Test isolation
+The Playwright suite is **serial** (`fullyParallel: false, workers: 1`). These are integration
+tests against one backend and one database; parallel workers had admin tests creating products
+while menu tests were counting them ("expected 14, received 15").
+
+Separately, a failed admin test used to leave its product behind and break an unrelated test on
+every later run. `admin.spec.ts` now has an `afterEach` that deletes anything named `E2E *`, so a
+failure cannot poison the next run.
+
+---
+
 ## Open questions
 
-- None blocking. Next is Phase 5 (admin CRUD + charted reports), then Phase 6 QA, then Phase 7
-  (Angular against the same API).
-- The admin dashboard currently reads real data but is **read-only**; product CRUD endpoints exist
-  on the backend and are untouched by the UI.
+- None blocking. Next is Phase 6 (QA sweep, coverage) and Phase 7 (Angular against the same API).

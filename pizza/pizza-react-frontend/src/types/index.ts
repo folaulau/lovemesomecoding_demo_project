@@ -232,3 +232,49 @@ export interface CrustWriteRequest {
   active: boolean;
   displayOrder: number;
 }
+
+// ---------------------------------------------------------------- saved cart
+
+/** One line as the SERVER stores it — identifiers, plus prices resolved at read time. */
+export interface ServerCartItem {
+  id: UUID;
+  productId: UUID;
+  productName: string;
+  productType: ProductType;
+  size: SizeName;
+  crustId: UUID | null;
+  crustName: string | null;
+  quantity: number;
+  toppings: Array<{ toppingId: UUID; toppingName: string; price: number }>;
+  unitPrice: number;
+  lineTotal: number;
+}
+
+/**
+ * A cart as persisted by the API.
+ *
+ * The stored cart holds identifiers only; the money below is recomputed from the current menu on
+ * every read, by the same rules the checkout uses.
+ */
+export interface ServerCart {
+  id: UUID;
+  orderType: OrderType;
+  items: ServerCartItem[];
+  subtotal: number;
+  tax: number;
+  deliveryFee: number;
+  total: number;
+  itemCount: number;
+}
+
+/** PUT /api/carts/{id} — the whole cart, replaced in one idempotent write. */
+export interface CartWriteRequest {
+  orderType: OrderType;
+  items: Array<{
+    productId: UUID;
+    size: SizeName;
+    crustId: UUID | null;
+    toppingIds: UUID[];
+    quantity: number;
+  }>;
+}

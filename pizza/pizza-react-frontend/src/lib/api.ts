@@ -107,4 +107,19 @@ export const api = {
     request<T>(path, { ...opts, method: 'DELETE' }),
 };
 
+/**
+ * Where the browser remembers WHICH cart is its own.
+ *
+ * Only an unguessable UUID is stored — never the cart's contents. The contents live in the
+ * database, which is the whole point: a refresh, a second tab, or a crashed browser all recover
+ * the same basket.
+ */
+const CART_ID_KEY = 'pizza.cartId';
+
+export const cartIdStore = {
+  get: (): string | null => localStorage.getItem(CART_ID_KEY),
+  set: (id: string) => localStorage.setItem(CART_ID_KEY, id),
+  clear: () => localStorage.removeItem(CART_ID_KEY),
+};
+
 export { BASE_URL };

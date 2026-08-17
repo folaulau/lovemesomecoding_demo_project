@@ -34,6 +34,8 @@ b. Secret key
 sk_test_51U5Wc3BeMrxmFducTHj1nBq34oFWbVXEEdbMgY8YMufv5FoZitr84A42bbmgCNXfTUL0QS8Xg532ifiEWHzSBI8y00SE87Njv0
 - pattern backend like this project /Users/folaukaveinga/Github/trademachine, don't worry about the frontend directory in this directory.
 
+- add cart to the backend, when refreshing any page, cart content should be persisted in the backend.
+
 ## Test
 - Use playwright and test all flows through the UI.
 - Users select pizza, drinks, and place an order.

@@ -17,4 +17,7 @@ public interface DatabaseTableNames {
     String CUSTOMER_ORDER = "customer_order";
     String ORDER_ITEM = "order_item";
     String ORDER_ITEM_TOPPING = "order_item_topping";
+    String CART = "cart";
+    String CART_ITEM = "cart_item";
+    String CART_ITEM_TOPPING = "cart_item_topping";
 }
