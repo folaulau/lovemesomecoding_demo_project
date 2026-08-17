@@ -1,9 +1,9 @@
 import { useCallback, useMemo, useState } from 'react';
-import { Col, Container, Nav, Row } from 'react-bootstrap';
+import { Alert, Button, Col, Container, Nav, Row, Spinner } from 'react-bootstrap';
 import { useSearchParams } from 'react-router-dom';
 import { ProductCard } from '../components/ProductCard';
 import { PizzaBuilderModal } from '../components/PizzaBuilderModal';
-import { MOCK_MENU } from '../mocks/menu';
+import { useMenu } from '../context/MenuContext';
 import type { Product, ProductType } from '../types';
 
 type Filter = 'ALL' | ProductType;
@@ -25,18 +25,21 @@ export function MenuPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const activeFilter = (searchParams.get('type') as Filter) ?? 'ALL';
 
+  // Menu data comes from the API via context — see MenuContext.
+  const { products, loading, error, reload } = useMenu();
+
   // `null` means the modal is closed. One piece of state, not two.
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
 
   /*
    * REACT CONCEPT: useMemo
-   * Recompute the filtered list only when the filter changes — not on every re-render caused by
-   * opening the modal or the cart drawer.
+   * Recompute the filtered list only when the filter or the data changes — not on every re-render
+   * caused by opening the modal or the cart drawer.
    */
   const visibleProducts = useMemo(() => {
-    if (activeFilter === 'ALL') return MOCK_MENU;
-    return MOCK_MENU.filter((product) => product.type === activeFilter);
-  }, [activeFilter]);
+    if (activeFilter === 'ALL') return products;
+    return products.filter((product) => product.type === activeFilter);
+  }, [activeFilter, products]);
 
   /*
    * REACT CONCEPT: useCallback
@@ -73,13 +76,32 @@ export function MenuPage() {
         ))}
       </Nav>
 
-      <Row xs={1} sm={2} lg={4} className="g-4">
-        {visibleProducts.map((product) => (
-          <Col key={product.id}>
-            <ProductCard product={product} onSelect={handleSelect} />
-          </Col>
-        ))}
-      </Row>
+      {loading && (
+        <div className="text-center py-5">
+          <Spinner animation="border" variant="danger" role="status">
+            <span className="visually-hidden">Loading the menu…</span>
+          </Spinner>
+        </div>
+      )}
+
+      {error && (
+        <Alert variant="danger" className="d-flex justify-content-between align-items-center">
+          <span>{error}</span>
+          <Button size="sm" variant="outline-danger" onClick={reload}>
+            Try again
+          </Button>
+        </Alert>
+      )}
+
+      {!loading && !error && (
+        <Row xs={1} sm={2} lg={4} className="g-4">
+          {visibleProducts.map((product) => (
+            <Col key={product.id}>
+              <ProductCard product={product} onSelect={handleSelect} />
+            </Col>
+          ))}
+        </Row>
+      )}
 
       <PizzaBuilderModal product={selectedProduct} onHide={() => setSelectedProduct(null)} />
     </Container>

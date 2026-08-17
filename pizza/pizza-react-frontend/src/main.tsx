@@ -10,11 +10,12 @@ import App from './App.tsx';
 import { CartProvider } from './context/CartContext';
 import { AuthProvider } from './context/AuthContext';
 import { ToastProvider } from './context/ToastContext';
+import { MenuProvider } from './context/MenuContext';
 
 /*
- * Provider order matters only where one provider consumes another. These three are independent,
- * so the nesting is chosen for readability: auth outermost (longest-lived), then cart, then
- * toasts (which anything may fire).
+ * Provider order matters only where one provider consumes another. These four are independent,
+ * so the nesting is chosen for readability: auth outermost (longest-lived), then the menu
+ * catalogue, then the cart, then toasts (which anything may fire).
  *
  * StrictMode intentionally double-invokes renders and effects in DEVELOPMENT ONLY. It is not a
  * bug — it is how React surfaces impure renders and missing effect cleanups. It does not happen
@@ -24,11 +25,13 @@ createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <BrowserRouter>
       <AuthProvider>
-        <CartProvider>
-          <ToastProvider>
-            <App />
-          </ToastProvider>
-        </CartProvider>
+        <MenuProvider>
+          <CartProvider>
+            <ToastProvider>
+              <App />
+            </ToastProvider>
+          </CartProvider>
+        </MenuProvider>
       </AuthProvider>
     </BrowserRouter>
   </StrictMode>,

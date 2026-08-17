@@ -1,6 +1,6 @@
-import { Card, Col, Container, Row } from 'react-bootstrap';
+import { Card, Col, Container, Row, Spinner } from 'react-bootstrap';
 import { Link } from 'react-router-dom';
-import { MOCK_PIZZAS } from '../mocks/menu';
+import { useMenu } from '../context/MenuContext';
 import { formatMoney } from '../lib/money';
 
 /*
@@ -12,7 +12,8 @@ import { formatMoney } from '../lib/money';
  * correct: these navigate somewhere, so they should be anchors, not buttons.
  */
 export function HomePage() {
-  const featured = MOCK_PIZZAS.slice(0, 3);
+  const { pizzas, loading } = useMenu();
+  const featured = pizzas.slice(0, 3);
 
   return (
     <>
@@ -45,31 +46,40 @@ export function HomePage() {
 
       <Container className="py-5">
         <h2 className="h4 fw-bold mb-4">Popular right now</h2>
-        <Row xs={1} md={3} className="g-4">
-          {featured.map((pizza) => (
-            <Col key={pizza.id}>
-              <Card className="product-card">
-                <div className="product-thumb" aria-hidden="true">
-                  🍕
-                </div>
-                <Card.Body>
-                  <Card.Title as="h3" className="h6 fw-bold">
-                    {pizza.name}
-                  </Card.Title>
-                  <Card.Text className="text-muted small">{pizza.description}</Card.Text>
-                  <div className="d-flex justify-content-between align-items-center">
-                    <span className="fw-bold text-pizza-red">
-                      from {formatMoney(Math.min(...pizza.sizes.map((s) => s.price)))}
-                    </span>
-                    <Link to="/menu" className="btn btn-outline-primary btn-sm">
-                      Build it
-                    </Link>
+
+        {loading ? (
+          <div className="text-center py-4">
+            <Spinner animation="border" variant="danger" role="status">
+              <span className="visually-hidden">Loading…</span>
+            </Spinner>
+          </div>
+        ) : (
+          <Row xs={1} md={3} className="g-4">
+            {featured.map((pizza) => (
+              <Col key={pizza.id}>
+                <Card className="product-card">
+                  <div className="product-thumb" aria-hidden="true">
+                    🍕
                   </div>
-                </Card.Body>
-              </Card>
-            </Col>
-          ))}
-        </Row>
+                  <Card.Body>
+                    <Card.Title as="h3" className="h6 fw-bold">
+                      {pizza.name}
+                    </Card.Title>
+                    <Card.Text className="text-muted small">{pizza.description}</Card.Text>
+                    <div className="d-flex justify-content-between align-items-center">
+                      <span className="fw-bold text-pizza-red">
+                        from {formatMoney(Math.min(...pizza.sizes.map((s) => s.price)))}
+                      </span>
+                      <Link to="/menu" className="btn btn-outline-primary btn-sm">
+                        Build it
+                      </Link>
+                    </div>
+                  </Card.Body>
+                </Card>
+              </Col>
+            ))}
+          </Row>
+        )}
       </Container>
     </>
   );

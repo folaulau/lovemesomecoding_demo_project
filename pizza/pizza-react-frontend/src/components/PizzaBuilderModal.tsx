@@ -2,7 +2,7 @@ import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { Badge, Button, Col, Form, Modal, Row, ToggleButton, ToggleButtonGroup } from 'react-bootstrap';
 import type { Crust, Product, SizeName, Topping } from '../types';
 import { formatMoney, round2 } from '../lib/money';
-import { MOCK_CRUSTS, MOCK_TOPPINGS } from '../mocks/menu';
+import { useMenu } from '../context/MenuContext';
 import { useCart } from '../context/CartContext';
 import { useToast } from '../context/ToastContext';
 
@@ -24,12 +24,14 @@ const TOPPING_GROUPS: Array<{ label: string; category: Topping['category'] }> = 
  * near-identical ones.
  */
 export function PizzaBuilderModal({ product, onHide }: Props) {
+  // Crusts and toppings come from the API via context, not from a hard-coded list.
+  const { crusts, toppings } = useMenu();
   const { addItem } = useCart();
   const { showToast } = useToast();
 
   const [size, setSize] = useState<SizeName>('MEDIUM');
-  const [crustId, setCrustId] = useState<number>(MOCK_CRUSTS[0].id);
-  const [selectedToppingIds, setSelectedToppingIds] = useState<number[]>([]);
+  const [crustId, setCrustId] = useState<string | null>(null);
+  const [selectedToppingIds, setSelectedToppingIds] = useState<string[]>([]);
   const [quantity, setQuantity] = useState(1);
 
   const isPizza = product?.type === 'PIZZA';
@@ -61,20 +63,21 @@ export function PizzaBuilderModal({ product, onHide }: Props) {
   useEffect(() => {
     if (product) {
       setSize('MEDIUM');
-      setCrustId(MOCK_CRUSTS[0].id);
+      // Default to the first crust once the catalogue has loaded.
+      setCrustId(crusts[0]?.id ?? null);
       setSelectedToppingIds([]);
       setQuantity(1);
     }
-  }, [product]);
+  }, [product, crusts]);
 
   const crust: Crust | null = useMemo(
-    () => (isPizza ? (MOCK_CRUSTS.find((c) => c.id === crustId) ?? null) : null),
-    [isPizza, crustId],
+    () => (isPizza ? (crusts.find((c) => c.id === crustId) ?? null) : null),
+    [isPizza, crustId, crusts],
   );
 
   const selectedToppings = useMemo(
-    () => (isPizza ? MOCK_TOPPINGS.filter((t) => selectedToppingIds.includes(t.id)) : []),
-    [isPizza, selectedToppingIds],
+    () => (isPizza ? toppings.filter((t) => selectedToppingIds.includes(t.id)) : []),
+    [isPizza, selectedToppingIds, toppings],
   );
 
   /*
@@ -94,7 +97,7 @@ export function PizzaBuilderModal({ product, onHide }: Props) {
     return { unit, total: round2(unit * quantity) };
   }, [product, size, crust, selectedToppings, quantity]);
 
-  function toggleTopping(id: number) {
+  function toggleTopping(id: string) {
     setSelectedToppingIds((current) =>
       current.includes(id) ? current.filter((t) => t !== id) : [...current, id],
     );
@@ -159,7 +162,7 @@ export function PizzaBuilderModal({ product, onHide }: Props) {
             <section className="mb-4">
               <h4 className="h6 fw-bold text-uppercase text-muted">Crust</h4>
               <Row xs={2} md={4} className="g-2">
-                {MOCK_CRUSTS.map((option) => (
+                {crusts.map((option) => (
                   <Col key={option.id}>
                     <Form.Check
                       type="radio"
@@ -194,7 +197,7 @@ export function PizzaBuilderModal({ product, onHide }: Props) {
                 <div key={group.category} className="mb-3">
                   <div className="small fw-semibold mb-1">{group.label}</div>
                   <div className="d-flex flex-wrap gap-2">
-                    {MOCK_TOPPINGS.filter((t) => t.category === group.category).map((topping) => {
+                    {toppings.filter((t) => t.category === group.category).map((topping) => {
                       const selected = selectedToppingIds.includes(topping.id);
                       return (
                         <Button

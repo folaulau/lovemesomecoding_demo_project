@@ -3,17 +3,20 @@
 Shared context for the pizza demo (React + Angular frontends, Spring Boot backend).
 Read this first when resuming work.
 
-**Status:** Phases 0–2 complete. Backend + React UI both run; 14 backend tests and 9 e2e tests green.
+**Status:** Phases 0–4 complete. The React app now runs entirely against the real API with Stripe
+Elements. **46 backend tests + 12 e2e tests + 1 payment integration test, all green.**
 **Last updated:** 2026-08-17
 
 **Run the backend:** `cd pizza-springboot-backend && ./mvnw spring-boot:run` → http://localhost:8085
 · Swagger UI at http://localhost:8085/swagger-ui.html
 
 **Run the frontend:** `cd pizza-react-frontend && nvm use && npm run dev` → http://localhost:5173
-· `npm run test:e2e` — Playwright suite · `npm run screenshots` — regenerate `screenshots/`
+· `npm run test:e2e` — Playwright suite (**needs the backend running**)
+· `STRIPE_SECRET_KEY=sk_test_… npm run test:payment` — payment integration
+· `npm run screenshots` — regenerate `screenshots/`
 
 **Demo logins:** `admin@pizza.test` / `admin123` · `customer@pizza.test` / `pizza123`
-(the frontend still uses mock auth until Phase 4)
+(real JWT auth against the API — the frontend no longer mocks anything)
 
 ---
 
@@ -247,8 +250,8 @@ toast/notification component so that teaching point survives.
 | **0** | Verify stack: springdoc, Security 7, Lombok+MapStruct, MySQL, Liquibase | ✅ **done** |
 | **1** | Real pom, Liquibase schema + seed changesets, entities/JPA layer | ✅ **done** |
 | **2** | React frontend on **mock data** — full Pizza Hut look, cart Context, builder modal, checkout UI | ✅ **done** |
-| **3** | Backend endpoints: catalog, JWT auth, orders, Stripe, admin CRUD, reports | todo |
-| **4** | Integrate React → real API; wire Stripe Elements | todo |
+| **3** | Backend endpoints: catalog, JWT auth, orders, Stripe, admin CRUD, reports | ✅ **done** |
+| **4** | Integrate React → real API; wire Stripe Elements | ✅ **done** |
 | **5** | Admin dashboard + reports UI (Recharts) | todo |
 | **6** | QA: tests to ~90%, Playwright demo, `spotless apply` | todo |
 | **7** | Angular frontend against the same API | todo |
@@ -366,7 +369,213 @@ Code splitting is verified, not assumed: the build emits a separate
 
 ---
 
+## Phase 3 findings — the real API (DONE)
+
+**39/39 backend tests green.** Verified live against MySQL *and* against Stripe's test API, not
+just in unit tests.
+
+### Endpoints
+| Method | Path | Access |
+|---|---|---|
+| GET | `/api/products`, `/api/toppings`, `/api/crusts` | public |
+| POST | `/api/auth/register`, `/api/auth/login` | public |
+| GET | `/api/auth/me` | authenticated |
+| POST | `/api/orders` | **public — this is guest checkout** |
+| GET | `/api/orders/{id}`, `/api/orders/{id}/payment-status` | public |
+| GET | `/api/orders/mine` | authenticated |
+| POST | `/api/webhooks/stripe` | public, protected by signature |
+| * | `/api/admin/products\|toppings\|crusts\|orders` | ADMIN |
+| GET | `/api/admin/reports/dashboard?days=30` | ADMIN |
+
+### Verified by hand against the running app
+- Guest order — Large Pepperoni + Stuffed Crust + Bacon + Extra Cheese → unit **22.99**,
+  tax **1.95**, delivery **3.99**, total **28.93**, exactly as predicted from the menu.
+- Stripe received **2893 cents**, currency usd, `metadata.orderId=19`, receipt email set.
+- **Price tampering ignored:** a request claiming `"total":0.01` with `"unitPrice":0.01` was
+  charged **18.43**. The price fields are not on the request record, so Jackson discards them and
+  `PricingService` reads every figure from the database.
+- Reports cross-check against the Phase 1 SQL: 357.40 + 27.02 + 40.86 = **425.28** ✓
+- Admin endpoints: 403 anonymous, 403 with a CUSTOMER token, 200 with an ADMIN token.
+- Registration cannot self-promote: posting `"role":"ADMIN"` still creates a CUSTOMER.
+
+### ⚠️ Boot 4 GOTCHA #2 — test autoconfiguration moved too
+`AutoConfigureMockMvc` is no longer at
+`org.springframework.boot.test.autoconfigure.web.servlet` — in Boot 4 it is
+**`org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc`**
+(in `spring-boot-webmvc-test`). Same modularization as the Liquibase starter in Phase 0.
+`@MockitoBean` is unchanged at `org.springframework.test.context.bean.override.mockito`.
+
+Also: **no plain `ObjectMapper` bean is available to autowire** in the test context under Boot 4,
+even though Jackson serializes responses fine. Constructing one in the test avoids depending on
+the auto-configuration shape.
+
+### Gotcha — interface projections do not coerce types
+The MySQL driver returns a `DATE` column as `java.time.LocalDate`. Declaring
+`java.sql.Date getDay()` compiles and then fails at runtime with
+*"Cannot project java.time.LocalDate to java.sql.Date"*. Projection getters must match what the
+driver actually returns. (The `GlobalExceptionHandler` did its job here — the client got a clean
+500 envelope with no stack trace.)
+
+### Deliberate design notes
+- **`PricingService` is the security boundary.** `CreateOrderRequest` has no price fields at all,
+  so there is nothing to tamper with; every figure is read from `product_size`, `crust`, `topping`.
+- Order rows snapshot `product_name`, `crust_name`, `unit_price` and topping prices, so editing the
+  menu never rewrites history. Reports group by the snapshotted name for the same reason.
+- Reports aggregate in **SQL**, not by loading orders into memory.
+- `markPaid` is idempotent — Stripe delivers webhooks more than once.
+- The webhook verifies the `Stripe-Signature` header. Without that check the endpoint would be an
+  open "mark my order paid" API.
+- Login failures are deliberately vague so the response cannot be used to enumerate accounts.
+
+### ⚠️ Known limitation, called out rather than hidden
+`GET /api/orders/{id}` is public so a guest can see their confirmation page without an account.
+Ids are sequential, so anyone could walk them and read other people's orders. A production system
+would use an unguessable reference (UUID) or a signed link. Noted in `SecurityConfig`.
+
+---
+
+## UUID public identifiers + audit timestamps (DONE)
+
+**Decisions:** keep the BIGINT primary key for internal FKs; add a `public_id` **CHAR(36)** UUID
+that is the *only* identifier the API exposes. Every table also gains `created_at` / `updated_at`.
+
+Added additively as changesets 004–005 rather than by editing 001 — editing an applied changeset
+breaks Liquibase's recorded checksum.
+
+- Existing rows backfilled **deterministically** from their numeric id
+  (`aaaaaaaa-0000-4000-8000-000000000001`), so seeded demo data has stable, greppable UUIDs that
+  tests and frontend mocks can hard-code. `TestIds` in the test sources is the shared fixture.
+- Rows created at runtime get a real random UUID from `@PrePersist`.
+- This **closes the enumeration limitation** flagged in Phase 3: `/api/orders/{uuid}` can no longer
+  be walked.
+
+### Gotcha — Hibernate stores UUID as BINARY(16) by default
+`@JdbcTypeCode(SqlTypes.CHAR)` is load-bearing. Without it a `java.util.UUID` maps to BINARY(16),
+which does not match the CHAR(36) column, and `ddl-auto=validate` refuses to start.
+
+### Gotcha — interface projections do not coerce types
+The MySQL driver returns a `DATE` column as `java.time.LocalDate`. Declaring `java.sql.Date`
+compiles and then fails at runtime with *"Cannot project java.time.LocalDate to java.sql.Date"*.
+
+### Bug found and fixed — malformed UUID returned 500
+Switching ids to UUID meant `"productId":"not-a-uuid"` threw a Jackson parse error that fell
+through to the catch-all handler. Bad input must be 4xx. `RestExceptionHandler` now handles
+`HttpMessageNotReadableException` and `MethodArgumentTypeMismatchException` → 400.
+
+### ⚠️ Bug found and fixed — every timestamp was silently shifted
+A row stored as `2026-01-01 00:00:00` came back from the API as `2025-12-31T17:00:00`.
+
+Cause: `serverTimezone=UTC` on the JDBC URL (plus `hibernate.jdbc.time_zone=UTC`) makes the MySQL
+driver convert DATETIME values between zones. Every timestamp column maps to
+**`LocalDateTime`, which has no zone**, so any conversion is silent corruption.
+
+Fix: `connectionTimeZone=LOCAL&preserveInstants=false` on the URL, and the Hibernate property
+removed. Guarded by a regression test asserting the seeded value reads back byte-for-byte. Use
+`Instant`/`OffsetDateTime` if zone-aware storage is ever genuinely needed.
+
+---
+
+## Backend restyled to match trademachine (DONE)
+
+Patterned after `/Users/folaukaveinga/Github/trademachine` (backend only). **46/46 tests green.**
+
+| Aspect | Now |
+|---|---|
+| Packages | `com.pizza.api.entity.<domain>` — entity + DAO + DAOImp + Repository + Service + ServiceImpl + RestController in one package |
+| DAO impl | `ProductDAOImp` (matches trademachine, and pizza/CLAUDE.md's spelling) |
+| DTOs | central `com.pizza.api.dto` + one `EntityDTOMapper` with `mapXToY` methods |
+| Entities | `@Data @Builder @AllArgsConstructor @NoArgsConstructor`, `implements Serializable`, `@JsonInclude(NON_NULL)`, `@DynamicUpdate`, `@SQLRestriction("deleted = false")` |
+| Timestamps | `@CreationTimestamp` / `@UpdateTimestamp` (Hibernate), replacing the `BaseEntity` `@PrePersist` |
+| Table names | `DatabaseTableNames` constants; indexes declared in `@Table` |
+| Exceptions | `exception/` — `ApiError`, `ApiSubError`, `ApiException`, `RestExceptionHandler` |
+| Injection / logging | `@Autowired` fields, `@Slf4j` |
+| Controllers | return `ResponseEntity<>`, log each request |
+
+`BaseEntity` was **removed** — trademachine declares the common fields on each entity, so the four
+shared columns are now repeated per entity by design.
+
+### ⚠️ Landmine handled — `@Data` on bidirectional JPA entities
+Lombok's `@Data` generates `equals`/`hashCode`/`toString` over **every** field. On a bidirectional
+relationship that means `Product.toString()` walks its sizes, each of which walks back to the
+product — infinite recursion, plus a forced lazy load on every call. trademachine's `Stock` has no
+parent back-reference so it never hits this; pizza has four.
+
+Every back-reference and owned collection therefore carries `@ToString.Exclude` and
+`@EqualsAndHashCode.Exclude`. Verified live: fetching a full order graph (order → items →
+toppings) serialises correctly.
+
+### Soft delete
+`deleted` added to all 8 tables (changeset 006) **alongside** `active`, because they mean different
+things: `active` = temporarily off the menu but still editable in admin; `deleted` = gone, and
+filtered out of every query by `@SQLRestriction`. Rows are never physically removed — historical
+orders reference them.
+
+### API contract change
+The error envelope is now trademachine's shape. Field errors moved from a `fieldErrors` map to an
+`errors` array of `{field, message}`:
+
+```json
+{"statusCode":400,"error":"Bad Request","message":"Validation failed",
+ "errors":[{"field":"items","message":"An order needs at least one item"}],
+ "path":"/api/orders","timestamp":"..."}
+```
+
+### Deviation from trademachine, deliberate
+One `XCreateDTO` per entity serves both create and update, since the shapes are identical.
+trademachine splits `StockCreateDTO` / `StockUpdateDTO`; split these too the moment they diverge.
+
+---
+
+## Phase 4 findings — React wired to the real API + Stripe (DONE)
+
+`src/mocks/` is **deleted**. Nothing in the app is mocked any more: every screen reads from the
+API. **12/12 e2e tests** pass against the running backend, plus a separate payment integration test.
+
+### What was added
+| File | Purpose |
+|---|---|
+| `lib/api.ts` | the only place that calls `fetch` — base URL, bearer token, `ApiError` with field errors |
+| `lib/stripe.ts` | `loadStripe` at module level (calling it in a component reloads Stripe.js every render) |
+| `context/MenuContext.tsx` | loads products/toppings/crusts once, with `AbortController` cleanup |
+| `components/StripePaymentForm.tsx` | `PaymentElement` + `confirmPayment` |
+| `types/index.ts` | every id is now a `UUID` string alias |
+
+### Checkout is two steps, necessarily
+`POST /api/orders` must happen **before** the card form can render, because Elements confirms a
+PaymentIntent that does not exist until the order does. So: collect details → create order (server
+prices it) → render Elements against the returned `clientSecret` → confirm the card.
+
+The summary switches to the **server's** figures the moment the order exists — the browser's
+arithmetic is only ever a preview.
+
+### Fixed — refreshing on /admin logged you out
+`ProtectedRoute` decided before the stored token had been checked against `/api/auth/me`, so a
+valid admin got one frame of `isAuthenticated === false` and was redirected to login.
+`AuthContext` now exposes `initialising`, and the guard waits for it.
+
+### ⚠️ Stripe's card iframe cannot be automated
+The card fields never mount under headless Playwright: Stripe serves `elements-inner-loader-ui`
+plus **hCaptcha** frames and its bot detection stops there. Retrying would produce a slow, flaky
+test failing for reasons unrelated to our code.
+
+Split instead, so everything we own is still covered:
+- `order-flow.spec.ts` — Elements mounts and the Pay button shows the server-calculated total.
+- `payment.spec.ts` — order created → PaymentIntent confirmed via Stripe's API with
+  `pm_card_visa` → **our** `/payment-status` returns `PAID`. Skips cleanly without
+  `STRIPE_SECRET_KEY`.
+
+Verified end to end: order `PENDING_PAYMENT` → Stripe `succeeded`, amount **1843 cents** →
+our API reports `PAID`, total `18.43`.
+
+### Payment status is never asserted by the browser
+The confirmation page polls `/api/orders/{uuid}/payment-status`, which asks **Stripe** and updates
+our record. The client never tells the server an order is paid — anyone can call our API.
+
+---
+
 ## Open questions
 
-- None blocking. Next up is Phase 3 (backend services, DTOs, MapStruct mappers, REST controllers,
-  JWT auth, Stripe).
+- None blocking. Next is Phase 5 (admin CRUD + charted reports), then Phase 6 QA, then Phase 7
+  (Angular against the same API).
+- The admin dashboard currently reads real data but is **read-only**; product CRUD endpoints exist
+  on the backend and are untouched by the UI.

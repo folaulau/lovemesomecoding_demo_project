@@ -1,7 +1,9 @@
 package com.pizza.api.config;
 
+import com.pizza.api.security.JwtAuthenticationFilter;
 import java.util.Arrays;
 import java.util.List;
+import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -13,23 +15,26 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 /**
- * Baseline security.
+ * Security rules.
  *
  * <p>This is Spring Security 7's lambda DSL — version 7 removed the older chained-setter style
  * entirely, so examples written against Spring Security 5 will not compile here.
  *
- * <p><b>Phase 1 scope.</b> This opens up the routes the app needs to be usable and testable. The
- * JWT filter, the {@code /api/admin/**} role check and real authentication arrive in Phase 3; the
- * matchers below are already laid out to receive them.
+ * <p>Rules are evaluated IN ORDER, first match wins. That is why the specific patterns
+ * ({@code /api/orders/mine}) come before the general ones ({@code /api/orders/**}).
  */
 @Configuration
 @EnableWebSecurity
+@RequiredArgsConstructor
 public class SecurityConfig {
+
+    private final JwtAuthenticationFilter jwtAuthenticationFilter;
 
     @Value("${pizza.cors.allowed-origins}")
     private String allowedOrigins;
@@ -37,27 +42,61 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http.cors(Customizer.withDefaults())
-                // Safe to disable ONLY because this API is stateless and token-based: with no
-                // session cookie there is nothing for a cross-site request to ride on.
+                // Safe to disable ONLY because this API is stateless and token-based: there is no
+                // session cookie for a cross-site request to ride on. Never do this for a
+                // cookie-authenticated app.
                 .csrf(csrf -> csrf.disable())
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        // API documentation
+                        // ---- documentation -------------------------------------------------
                         .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html")
                         .permitAll()
-                        // The menu is public — you can browse without an account
+
+                        // ---- auth ----------------------------------------------------------
+                        .requestMatchers("/api/auth/register", "/api/auth/login")
+                        .permitAll()
+                        .requestMatchers("/api/auth/me")
+                        .authenticated()
+
+                        // ---- Stripe callbacks ----------------------------------------------
+                        // Stripe cannot present a JWT. This endpoint is protected instead by
+                        // verifying the Stripe-Signature header — see StripeWebhookController.
+                        .requestMatchers("/api/webhooks/**")
+                        .permitAll()
+
+                        // ---- public menu ---------------------------------------------------
                         .requestMatchers(HttpMethod.GET, "/api/products/**", "/api/toppings/**", "/api/crusts/**")
                         .permitAll()
-                        // Guest checkout: placing an order must not require a login
-                        .requestMatchers(HttpMethod.POST, "/api/orders/**")
+
+                        // ---- orders --------------------------------------------------------
+                        // Specific first: order history needs a real account.
+                        .requestMatchers(HttpMethod.GET, "/api/orders/mine")
+                        .authenticated()
+                        // Placing an order must NOT require a login — this is guest checkout.
+                        .requestMatchers(HttpMethod.POST, "/api/orders")
                         .permitAll()
-                        .requestMatchers("/api/auth/**", "/api/webhooks/**")
+                        // Reading one order is public so a guest can see their confirmation page
+                        // without an account.
+                        // LIMITATION: ids are sequential, so anyone could walk them. A production
+                        // system would use an unguessable reference (UUID) or a signed link.
+                        // Left simple here deliberately, and called out rather than hidden.
+                        .requestMatchers(HttpMethod.GET, "/api/orders/*", "/api/orders/*/payment-status")
                         .permitAll()
+
+                        // ---- admin ---------------------------------------------------------
+                        .requestMatchers("/api/admin/**")
+                        .hasRole("ADMIN")
                         .requestMatchers("/actuator/health")
                         .permitAll()
-                        // TODO Phase 3: .requestMatchers("/api/admin/**").hasRole("ADMIN")
+
+                        // Default deny. Anything not listed above needs authentication, so a new
+                        // endpoint is closed until someone deliberately opens it.
                         .anyRequest()
-                        .permitAll());
+                        .authenticated())
+                // Runs before the username/password filter so a valid token authenticates the
+                // request before anything tries to challenge it.
+                .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
+
         return http.build();
     }
 

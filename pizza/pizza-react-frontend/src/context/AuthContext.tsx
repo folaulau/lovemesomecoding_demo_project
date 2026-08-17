@@ -1,104 +1,101 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
-import type { User } from '../types';
+import { ApiError, api, tokenStore } from '../lib/api';
+import type { AuthenticationResponse, User } from '../types';
 
 /* ==========================================================================
  * REACT CONCEPT: a second Context
  *
- * Auth is deliberately a separate context from the cart. If they shared one, every cart change
- * would re-render everything that only cares about the logged-in user, and vice versa. Splitting
- * contexts by how often they change is the standard way to avoid that.
- *
- * Phase 2 note: this is a MOCK. It accepts two hard-coded demo accounts and issues no real token.
- * Phase 4 replaces the body of login() with a POST to /api/auth/login; the interface consumers
- * see does not change.
+ * Auth is deliberately separate from the cart and the menu. If they shared one context, every cart
+ * change would re-render everything that only cares about the logged-in user, and vice versa.
+ * Splitting contexts by how often they change is the standard way to avoid that.
  * ========================================================================== */
-
-const STORAGE_KEY = 'pizza.auth';
 
 interface AuthContextValue {
   user: User | null;
   isAuthenticated: boolean;
   isAdmin: boolean;
   login: (email: string, password: string) => Promise<void>;
+  register: (email: string, password: string, fullName: string) => Promise<void>;
   logout: () => void;
   error: string | null;
   loading: boolean;
+  /** True until the stored token has been checked against the API on first load. */
+  initialising: boolean;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
-/** Mock accounts, matching the backend's seeded users. */
-const MOCK_ACCOUNTS: Array<{ password: string; user: User }> = [
-  {
-    password: 'admin123',
-    user: { id: 1, email: 'admin@pizza.test', fullName: 'Demo Admin', role: 'ADMIN' },
-  },
-  {
-    password: 'pizza123',
-    user: { id: 2, email: 'customer@pizza.test', fullName: 'Demo Customer', role: 'CUSTOMER' },
-  },
-];
-
 export function AuthProvider({ children }: { children: ReactNode }) {
-  /*
-   * REACT CONCEPT: lazy initial state
-   * Passing a FUNCTION to useState means it runs only on the first render. Reading localStorage
-   * is synchronous I/O; without the function form it would run on every single render and be
-   * thrown away.
-   */
-  const [user, setUser] = useState<User | null>(() => {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (!stored) return null;
-    try {
-      return JSON.parse(stored) as User;
-    } catch {
-      // Corrupt or stale value — treat as logged out rather than crashing the whole app.
-      return null;
-    }
-  });
+  const [user, setUser] = useState<User | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [initialising, setInitialising] = useState(true);
 
   /*
-   * REACT CONCEPT: useEffect for synchronising with something OUTSIDE React.
-   * localStorage is external state, so keeping it in step with the user belongs in an effect.
-   * Note this is NOT used to derive React state from other React state — that is the classic
-   * misuse of useEffect and causes an extra render every time.
+   * On first load, a token may already be in localStorage from a previous session — but it could
+   * be expired or revoked. The only way to know is to ask the API, so /api/auth/me is the source
+   * of truth rather than anything cached in the browser.
    */
   useEffect(() => {
-    if (user) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(user));
-    } else {
-      localStorage.removeItem(STORAGE_KEY);
-    }
-  }, [user]);
+    const controller = new AbortController();
 
-  const login = useCallback(async (email: string, password: string) => {
-    setLoading(true);
-    setError(null);
-
-    // Simulated latency so the loading state is actually visible while building the UI.
-    await new Promise((resolve) => setTimeout(resolve, 400));
-
-    const match = MOCK_ACCOUNTS.find(
-      (account) =>
-        account.user.email.toLowerCase() === email.trim().toLowerCase() &&
-        account.password === password,
-    );
-
-    setLoading(false);
-
-    if (!match) {
-      setError('Incorrect email or password.');
-      // Throwing lets the calling form await login() and react to failure.
-      throw new Error('Invalid credentials');
+    async function restoreSession() {
+      if (!tokenStore.get()) {
+        setInitialising(false);
+        return;
+      }
+      try {
+        const me = await api.get<User>('/api/auth/me', { auth: true, signal: controller.signal });
+        setUser(me);
+      } catch {
+        // Expired or invalid — drop it rather than leaving a dead token around.
+        if (!controller.signal.aborted) tokenStore.clear();
+      } finally {
+        if (!controller.signal.aborted) setInitialising(false);
+      }
     }
 
-    setUser(match.user);
+    void restoreSession();
+    return () => controller.abort();
   }, []);
 
+  const authenticate = useCallback(
+    async (path: string, body: unknown) => {
+      setLoading(true);
+      setError(null);
+      try {
+        const response = await api.post<AuthenticationResponse>(path, body);
+        tokenStore.set(response.token);
+        setUser(response.user);
+      } catch (err) {
+        const message =
+          err instanceof ApiError ? err.message : 'Could not reach the server. Is the API running?';
+        setError(message);
+        // Rethrow so the calling form can react to failure (e.g. keep the user on the page).
+        throw err;
+      } finally {
+        setLoading(false);
+      }
+    },
+    [],
+  );
+
+  const login = useCallback(
+    (email: string, password: string) => authenticate('/api/auth/login', { email, password }),
+    [authenticate],
+  );
+
+  const register = useCallback(
+    (email: string, password: string, fullName: string) =>
+      authenticate('/api/auth/register', { email, password, fullName }),
+    [authenticate],
+  );
+
   const logout = useCallback(() => {
+    // Nothing to call server-side: JWTs are stateless, so "logging out" is simply forgetting the
+    // token. That is also the trade-off — the token stays valid until it expires.
+    tokenStore.clear();
     setUser(null);
     setError(null);
   }, []);
@@ -109,11 +106,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isAuthenticated: user !== null,
       isAdmin: user?.role === 'ADMIN',
       login,
+      register,
       logout,
       error,
       loading,
+      initialising,
     }),
-    [user, login, logout, error, loading],
+    [user, login, register, logout, error, loading, initialising],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

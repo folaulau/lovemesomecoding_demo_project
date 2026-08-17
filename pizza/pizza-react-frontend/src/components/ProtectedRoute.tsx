@@ -1,5 +1,6 @@
 import { Navigate, useLocation } from 'react-router-dom';
 import type { ReactNode } from 'react';
+import { Spinner } from 'react-bootstrap';
 import { useAuth } from '../context/AuthContext';
 
 /**
@@ -23,8 +24,24 @@ export function ProtectedRoute({
   children: ReactNode;
   requireAdmin?: boolean;
 }) {
-  const { isAuthenticated, isAdmin } = useAuth();
+  const { isAuthenticated, isAdmin, initialising } = useAuth();
   const location = useLocation();
+
+  /*
+   * Wait for the stored token to be validated before deciding anything.
+   *
+   * Without this, refreshing the page on /admin renders one frame where `isAuthenticated` is still
+   * false — and redirects a perfectly valid admin to the login screen.
+   */
+  if (initialising) {
+    return (
+      <div className="text-center py-5">
+        <Spinner animation="border" variant="danger" role="status">
+          <span className="visually-hidden">Checking your session…</span>
+        </Spinner>
+      </div>
+    );
+  }
 
   if (!isAuthenticated) {
     return <Navigate to="/login" state={{ from: location }} replace />;

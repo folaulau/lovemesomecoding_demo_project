@@ -11,11 +11,11 @@
 - Add admin report dashboard so we can run reports
 
 ## Frontend
-- start with pizza-react-frontend
+- start with pizza-react-frontend and use Bootstrap 5
 - make sure to have a use case where it is using react context
 - use the react framework
 - use react major features and add comments so they are understood what they are used for.
-- user Bootstrap 5
+- implement pizza-angular-frontend and use tailwind css.
 
 ## Backend
 - use pizza-springboot-backend
@@ -31,3 +31,4 @@ pk_test_51U5Wc3BeMrxmFducR7hlZ3YwT770EF2DFj8VPmEmqZ7r2sVasfWDRjWMQBvEqdWOSuIGg6R
 
 b. Secret key
 sk_test_51U5Wc3BeMrxmFducTHj1nBq34oFWbVXEEdbMgY8YMufv5FoZitr84A42bbmgCNXfTUL0QS8Xg532ifiEWHzSBI8y00SE87Njv0
+- pattern backend like this project /Users/folaukaveinga/Github/trademachine, don't worry about the frontend directory in this directory.

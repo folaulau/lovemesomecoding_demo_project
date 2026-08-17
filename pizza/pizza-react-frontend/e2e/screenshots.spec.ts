@@ -32,4 +32,16 @@ test('capture the main screens', async ({ page }) => {
   await page.getByRole('button', { name: 'Checkout' }).click();
   await page.waitForURL(/checkout/);
   await page.screenshot({ path: 'screenshots/05-checkout.png', fullPage: true });
+
+  // Step 2: create the real order and show Stripe Elements.
+  await page.getByLabel('Name').fill('Demo Customer');
+  await page.getByLabel('Email').fill('demo@example.com');
+  await page.getByLabel('Street address').fill('123 Main St');
+  await page.getByLabel('City').fill('Salt Lake City');
+  await page.getByLabel('State').fill('UT');
+  await page.getByLabel('ZIP').fill('84101');
+  await page.getByRole('button', { name: /Continue to payment/ }).click();
+  await page.getByRole('button', { name: /^Pay \$/ }).waitFor({ timeout: 30_000 });
+  await page.waitForTimeout(2500);
+  await page.screenshot({ path: 'screenshots/06-payment.png', fullPage: true });
 });
