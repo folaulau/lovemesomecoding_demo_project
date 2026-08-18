@@ -1,14 +1,13 @@
 package com.pizza.api.entity.user;
 
 import com.pizza.api.dto.AdminUserDTO;
-import java.time.LocalDateTime;
+import com.pizza.api.mapper.AdminUserRowMapper;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Repository;
 
@@ -40,6 +39,9 @@ public class UserDAOImp implements UserDAO {
 
     @Autowired
     private NamedParameterJdbcTemplate jdbcTemplate;
+
+    @Autowired
+    private AdminUserRowMapper adminUserRowMapper;
 
     // ------------------------------------------------- repository: the simple things
 
@@ -91,36 +93,26 @@ public class UserDAOImp implements UserDAO {
      * {@code @SQLRestriction} does not apply — see {@code ReportDAOImp} for the same warning and the
      * bug it is there to prevent.
      */
-    private static final String ADMIN_LIST_SQL =
-            """
-            SELECT u.public_id  AS public_id,
-                   u.email      AS email,
-                   u.full_name  AS full_name,
-                   u.role       AS role,
-                   u.created_at AS created_at,
-                   (SELECT COUNT(*) FROM customer_order o
-                     WHERE o.user_id = u.id AND o.deleted = 0)      AS order_count,
-                   (SELECT COUNT(*) FROM user_address a
-                     WHERE a.user_id = u.id AND a.deleted = 0)      AS address_count,
-                   (SELECT COUNT(*) FROM user_payment_method p
-                     WHERE p.user_id = u.id AND p.deleted = 0)      AS payment_method_count
-            FROM app_user u
-            WHERE u.deleted = 0
-            ORDER BY u.created_at DESC
-            """;
-
-    private static final RowMapper<AdminUserDTO> ADMIN_USER_MAPPER = (rs, rowNum) -> new AdminUserDTO(
-            UUID.fromString(rs.getString("public_id")),
-            rs.getString("email"),
-            rs.getString("full_name"),
-            UserRole.valueOf(rs.getString("role")),
-            rs.getLong("order_count"),
-            rs.getInt("address_count"),
-            rs.getInt("payment_method_count"),
-            rs.getObject("created_at", LocalDateTime.class));
-
     @Override
     public List<AdminUserDTO> findAllForAdmin() {
-        return jdbcTemplate.query(ADMIN_LIST_SQL, Map.of(), ADMIN_USER_MAPPER);
+        String query =
+                """
+                SELECT u.public_id  AS public_id,
+                       u.email      AS email,
+                       u.full_name  AS full_name,
+                       u.role       AS role,
+                       u.created_at AS created_at,
+                       (SELECT COUNT(*) FROM customer_order o
+                         WHERE o.user_id = u.id AND o.deleted = 0)      AS order_count,
+                       (SELECT COUNT(*) FROM user_address a
+                         WHERE a.user_id = u.id AND a.deleted = 0)      AS address_count,
+                       (SELECT COUNT(*) FROM user_payment_method p
+                         WHERE p.user_id = u.id AND p.deleted = 0)      AS payment_method_count
+                FROM app_user u
+                WHERE u.deleted = 0
+                ORDER BY u.created_at DESC
+                """;
+
+        return jdbcTemplate.query(query, Map.of(), adminUserRowMapper);
     }
 }

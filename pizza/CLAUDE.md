@@ -36,7 +36,7 @@ sk_test_51U5Wc3BeMrxmFducTHj1nBq34oFWbVXEEdbMgY8YMufv5FoZitr84A42bbmgCNXfTUL0QS8
 
 - add cart to the backend, when refreshing any page, cart content should be persisted in the backend.
 
-- for dao layer, create a JPA implementation, create a DAO interface and its implementation and wire in the custom JPA and JdbcTemplate. use jdbcTemplate for custom queries and repository for simple things like create, update, simple look ups. look at BalanceDAOImpl.java in the /Users/folaukaveinga/Github/trademachine as an example.
+- for dao layer, create a JPA implementation, create a DAO interface and its implementation and wire in the custom JPA and JdbcTemplate. use jdbcTemplate for custom queries and repository for simple things like create, update, simple look ups. look at BalanceDAOImpl.java in the /Users/folaukaveinga/Github/trademachine as an example. Customer RowMappers should be in separate classes in the mapper package.
 
 - Service layer, create and interface and implementation.
 

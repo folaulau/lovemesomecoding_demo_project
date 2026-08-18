@@ -8,7 +8,7 @@
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview",
-    "test:e2e": "playwright test e2e/browse.spec.ts e2e/cart.spec.ts e2e/auth.spec.ts e2e/checkout.spec.ts e2e/orders-and-misc.spec.ts e2e/api-guards.spec.ts",
+    "test:e2e": "playwright test e2e/browse.spec.ts e2e/cart.spec.ts e2e/auth.spec.ts e2e/checkout.spec.ts e2e/orders-and-misc.spec.ts e2e/profile.spec.ts e2e/api-guards.spec.ts",
     "screenshots": "playwright test e2e/screenshots.spec.ts e2e/admin-screens.spec.ts",
     "typecheck": "tsc -b --noEmit",
     "test:payment": "playwright test e2e/payment.spec.ts",

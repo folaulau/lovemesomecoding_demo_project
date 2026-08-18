@@ -4,17 +4,22 @@ Shared context for the pizza demo (React + Angular frontends, Spring Boot backen
 Read this first when resuming work.
 
 **Status:** Phases 0–6 complete, plus server-side carts, customer profiles (addresses + saved
-cards) and a checkout address chooser. **55 backend tests + 85 Playwright tests, all green.**
+cards), a checkout address chooser, admin user management, and a full reports data audit.
+**60 backend tests + 92 Playwright tests, all green.**
 **Last updated:** 2026-08-17
 
 **Run the backend:** `cd pizza-springboot-backend && ./mvnw spring-boot:run` → http://localhost:8085
 · Swagger UI at http://localhost:8085/swagger-ui.html
 
 **Run the frontend:** `cd pizza-react-frontend && nvm use && npm run dev` → http://localhost:5173
+· `npm run test:all` — **the whole suite, 92 tests** (this is the one to run)
 · `npm run test:e2e` — customer flows · `npm run test:admin` — admin CRUD + reports
-  (**both need the backend running**)
+  (**all of these need the backend running**)
 · `STRIPE_SECRET_KEY=sk_test_… npm run test:payment` — payment integration
 · `npm run screenshots` — regenerate `screenshots/`
+
+**Run the backend tests:** `cd pizza-springboot-backend && ./mvnw test` — 60 tests, needs MySQL
+· `./mvnw spotless:apply` before committing Java
 
 **Demo logins:** `admin@pizza.test` / `admin123` · `customer@pizza.test` / `pizza123`
 (real JWT auth against the API — the frontend no longer mocks anything)
@@ -59,8 +64,9 @@ one and add a code comment explaining what production would do differently.
 | Schema management | **Liquibase**, changesets written in **formatted SQL** | User's call (Flyway was considered and dropped). Hibernate runs `ddl-auto=validate` and never touches the schema. |
 | Changelog layout | **XML manifest** + `includeAll` over `sql/*.sql` | Formatted SQL has no `include` directive, so the master must be XML/YAML. All *actual* changes stay in SQL. |
 | Frontend styling | **Bootstrap 5.3.8** | User's call. `react-bootstrap` 2.10.10 for React, `@ng-bootstrap/ng-bootstrap` 21.0.0 for Angular. |
-| Cart storage | **Browser only** (React Context + useReducer) | No cart table, no cart endpoints. Order rows created once, at checkout. |
+| Cart storage | **Browser only** (React Context + useReducer) | No cart table, no cart endpoints. Order rows created once, at checkout. ⚠️ **Later reversed** — see "Server-side carts". |
 | Pricing authority | **Server recomputes everything** | Client-sent prices are ignored. Deliberate teaching callout. |
+| DAO backing | **Repository + JdbcTemplate in the same DAO impl** | Patterned on trademachine's `BalanceDAOImpl`. Repository for saves and single-row lookups; `JdbcTemplate` for anything that aggregates. See "Reports data audit". |
 
 ---
 
@@ -254,7 +260,7 @@ toast/notification component so that teaching point survives.
 | **3** | Backend endpoints: catalog, JWT auth, orders, Stripe, admin CRUD, reports | ✅ **done** |
 | **4** | Integrate React → real API; wire Stripe Elements | ✅ **done** |
 | **5** | Admin dashboard + reports UI (Recharts) | ✅ **done** |
-| **6** | QA: tests to ~90%, Playwright demo, `spotless apply` | todo |
+| **6** | QA: tests to ~90%, Playwright demo, `spotless apply` | ✅ **done** |
 | **7** | Angular frontend against the same API | todo |
 
 Phase 2 precedes Phase 3 per the standard workflow (frontend first, on mock data).
@@ -639,7 +645,7 @@ failure cannot poison the next run.
 
 ## Phase 6 — UI test sweep (DONE)
 
-Every flow is now driven through the browser. **81 Playwright tests**, split by concern:
+Every flow is now driven through the browser. **92 Playwright tests**, split by concern:
 
 | Spec | Covers |
 |---|---|
@@ -652,6 +658,15 @@ Every flow is now driven through the browser. **81 Playwright tests**, split by 
 | `admin.spec.ts` | reports, product/topping/crust CRUD, order status, deactivation |
 | `api-guards.spec.ts` | the two guarantees not observable through the UI |
 | `payment.spec.ts` | order → Stripe charge → PAID (skips without `STRIPE_SECRET_KEY`) |
+| `screenshots.spec.ts` / `admin-screens.spec.ts` | capture-only, excluded from `test:all` |
+
+`admin.spec.ts` also covers the users tab: listing with activity counts, promote/demote, delete,
+the self-target refusals, and a customer being denied the tab entirely.
+
+⚠️ `npm run test:e2e` names its specs explicitly and had **silently omitted `profile.spec.ts`** —
+addresses and saved cards were only ever exercised by a full `playwright test`. Added. An
+allow-list of specs is a standing hazard: a new spec is not run until someone remembers to list it.
+`npm run test:all` is grep-invert based and does not have this problem.
 
 ### ⚠️ A test that was passing for the wrong reason
 `getByRole('link', { name: 'Pizzas' })` had been clicking the **navbar**, not the menu tab —
@@ -746,8 +761,123 @@ If behaviour does not match the source: stop the app, `./mvnw clean compile`, st
 
 ---
 
+## Admin user management + footer demo sign-ins (DONE)
+
+`/admin/users` lists every account with its role, order count, saved addresses and saved cards.
+Roles can be changed and accounts soft-deleted.
+
+### An admin cannot demote or delete themselves
+With a single administrator — the normal case for a small system — either action locks the last
+admin out of their own back office with no route back in through the UI. `refuseSelfTarget` rejects
+both with a 400, and the UI disables the controls on your own row so the failure is visible before
+you click. Refusing is far kinder than a support ticket and a SQL console.
+
+Deleting a user is a **soft** delete, like everything else here: past orders reference the row and
+an order must keep reading correctly long after the customer has gone.
+
+### Footer demo sign-ins
+Both demo logins are printed in a collapsed `<details>` panel in the footer, on every page.
+
+Putting credentials on a page is normally indefensible. It is acceptable **here and only here**
+because these are seeded fixtures in a throwaway local database — the same pair the login page
+already prints, unlocking nothing that exists off this machine. `Footer.tsx` carries a comment
+saying so, and saying that this block is the first thing to delete if the app is ever pointed at
+real data.
+
+Built on native `<details>`/`<summary>` rather than a JS accordion — the browser supplies the
+open/close behaviour, keyboard support and screen-reader semantics for free.
+
+### Gotcha — the footer broke three unrelated tests
+Printing `admin@pizza.test` and `customer@pizza.test` on **every** page made previously-unique text
+locators match twice. Tests that asserted on those strings had to be scoped (`getByRole('main')`).
+Worth remembering: adding a global element can break tests that never mentioned it.
+
+---
+
+## Reports data audit — soft-delete bug + DAO/JdbcTemplate refactor (DONE)
+
+Triggered by "make sure all reports in the admin use real data from the database". They do — but
+auditing properly turned up a real bug and an N+1.
+
+### Verification method
+Not "the code looks right": every figure the dashboard renders was cross-checked against SQL
+written independently against the same database.
+
+| | API | SQL |
+|---|---|---|
+| orders (30d) | 22 | 22 |
+| revenue | 575.13 | 575.13 |
+| average order | 26.14 | 26.14 |
+| items sold | 40 | 40 |
+
+Admin user counts reconcile the same way. Nothing in the admin frontend is mocked — the only
+literal arrays are UI constants (`TABS`, `RANGES`).
+
+### ⚠️ BUG FOUND AND FIXED — reports counted soft-deleted orders as revenue
+The reporting queries were native SQL, and **native SQL bypasses `@SQLRestriction`**. Hibernate
+applies that annotation when it builds a query *from the entity model*; SQL written by hand never
+goes near the entity model. So every soft-deleted order still counted toward revenue.
+
+Proven rather than inferred: soft-deleting a $28.91 order left reported revenue unchanged at
+575.13 instead of dropping to 546.22. All five queries now filter `deleted = 0`, and the same probe
+now yields exactly 546.22.
+
+This is the dangerous kind of bug — **the totals stay entirely plausible, just wrong**, which is
+precisely why nobody noticed. `ReportServiceImplTest.softDeletedOrdersAreExcluded` fails if a
+predicate ever goes missing again.
+
+### Reporting moved from a repository to a JdbcTemplate DAO
+`ReportRepository` (four `@Query(nativeQuery = true)` methods) and `ReportProjections` are **gone**,
+replaced by `ReportDAO` / `ReportDAOImp` using `NamedParameterJdbcTemplate` with `"""` text blocks.
+
+JPA's job is to map rows onto an object graph and track changes to it. Reporting wants neither:
+there is no entity to load, no identity map to populate, nothing to dirty-check. The old shape sent
+real SQL through a persistence layer that added nothing to it and returned interface projections
+Spring had to build proxies for. `ReportServiceImpl` collapsed to pure orchestration, since the DAO
+now returns the response records directly.
+
+### ⚠️ Second bug — the admin user list was 1 + 3N queries
+`AdminUserServiceImpl.toDto` ran, *per user*, an order count plus full loads of the address and
+payment-method lists just to call `.size()` on them — materialising entities nobody read a field of.
+
+`UserDAOImp` now answers the whole page in **one** query. It is the reference example of the DAO
+pattern from `pizza/CLAUDE.md`: `UserRepository` for saves and single-row lookups, and
+`NamedParameterJdbcTemplate` for the one query that aggregates across three tables.
+
+**Scalar subqueries, not `LEFT JOIN … GROUP BY`** — joining three one-to-many tables at once
+multiplies the rows together, so a user with 2 addresses and 3 cards would report 6 of each. That
+bug is subtle, plausible-looking and very common.
+
+### Deviations worth knowing
+- **`NamedParameterJdbcTemplate`, not the plain `JdbcTemplate`** trademachine's `BalanceDAOImpl`
+  uses. The summary query mentions `:from` twice; positional `?` there is an ordering trap. It
+  wraps a `JdbcTemplate`, so the pattern is otherwise identical.
+- `getObject(col, LocalDate.class)`, never `getDate` — the latter drags the JVM default timezone
+  into a value that has no time in it, the same class of bug as the seven-hour timestamp shift.
+- **Two `@Query` methods deliberately stay on their repositories.**
+  `ProductRepository.findAllWithSizes` and `CustomerOrderRepository.findInRange` return *entities*
+  with `@EntityGraph`. Hand-assembling those collections through `JdbcTemplate` would be more code
+  that does less, and would give up dirty-checking. The rule is "JdbcTemplate for custom queries,
+  repository for simple things" — an entity load is a simple thing.
+
+### Gotcha — a running IDE instance masks the fix
+The IntelliJ-launched app stayed pinned to pre-refactor classes and kept serving the **old**
+behaviour after `./mvnw clean test` rewrote `target/classes`. The soft-delete probe was what
+exposed it; the dashboard numbers alone were identical either way and proved nothing. Same family
+as the devtools note above: **if behaviour does not match the source, restart the app before
+debugging the code.**
+
+### Note on the demo data
+The status breakdown legitimately shows ~15 `PENDING_PAYMENT` orders — real leftovers from checkout
+tests that never paid. Correctly reported, but they clutter the demo; clearing them is cosmetic.
+
+---
+
 ## Open questions
 
 - Phase 7 (Angular against the same API) is the only planned work left.
 - Saved cards are stored and manageable, but **checkout does not yet offer them** — it always
   collects a card. Wiring "pay with a saved card" is the natural next step.
+- The remaining DAOs (`Product`, `Topping`, `Crust`, `Cart`, `CustomerOrder`) are repository-only,
+  because none of them currently needs a query that aggregates. Wire `JdbcTemplate` into one the
+  moment it does, rather than pre-emptively.
