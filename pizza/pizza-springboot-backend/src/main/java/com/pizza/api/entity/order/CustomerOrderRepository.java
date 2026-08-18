@@ -37,6 +37,9 @@ public interface CustomerOrderRepository extends JpaRepository<CustomerOrder, Lo
 
     List<CustomerOrder> findByStatusOrderByCreatedAtDesc(OrderStatus status);
 
+    /** How many orders an account has placed — shown in the admin user list. */
+    long countByUserId(Long userId);
+
     /** Used by the reports; the status filter is applied by the caller. */
     @Query(
             """

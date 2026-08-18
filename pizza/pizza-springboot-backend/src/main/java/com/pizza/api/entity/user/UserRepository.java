@@ -11,4 +11,7 @@ public interface UserRepository extends JpaRepository<User, Long> {
     Optional<User> findByPublicId(UUID publicId);
 
     boolean existsByEmailIgnoreCase(String email);
+
+    /** Newest first — the order the admin list shows them in. */
+    java.util.List<User> findAllByOrderByCreatedAtDesc();
 }

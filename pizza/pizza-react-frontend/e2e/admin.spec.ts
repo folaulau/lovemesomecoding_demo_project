@@ -251,3 +251,100 @@ test('a deactivated product disappears from the public menu', async ({ page, req
     .click();
   await expect(page.getByRole('cell', { name, exact: false })).toBeHidden();
 });
+
+// ---------------------------------------------------------------- users
+
+test('the users tab lists accounts with their activity', async ({ page }) => {
+  await signInAsAdmin(page, '/admin/users');
+
+  await expect(page.getByRole('heading', { name: /Users ·/ })).toBeVisible();
+
+  // Scope to the table — the footer's demo-sign-ins panel names both accounts too.
+  const table = page.getByRole('table');
+  await expect(table.getByText('admin@pizza.test')).toBeVisible();
+  await expect(table.getByText('customer@pizza.test')).toBeVisible();
+
+  // The demo customer has seeded orders, addresses and a saved card.
+  const customerRow = page.getByRole('row').filter({ hasText: 'customer@pizza.test' });
+  await expect(customerRow).toContainText('customer');
+});
+
+test('an admin cannot demote or delete their own account', async ({ page }) => {
+  await signInAsAdmin(page, '/admin/users');
+
+  const ownRow = page.getByRole('row').filter({ hasText: 'admin@pizza.test' });
+  await expect(ownRow).toContainText('you');
+
+  // Both controls are disabled, so the UI never offers an action the server will refuse.
+  await expect(ownRow.getByRole('combobox')).toBeDisabled();
+  await expect(ownRow.getByRole('button', { name: 'Delete' })).toBeDisabled();
+});
+
+test('a user can be promoted to admin and demoted again', async ({ page, request }) => {
+  // Register a throwaway account through the UI so there is someone safe to change.
+  const email = `e2e-role-${Date.now()}@example.com`;
+  await page.goto('/register');
+  await page.getByLabel('Full name').fill('Role Tester');
+  await page.getByLabel('Email').fill(email);
+  await page.getByLabel('Password').fill('password123');
+  await page.getByRole('button', { name: 'Create account' }).click();
+  await expect(page.getByRole('button', { name: /Role Tester/ })).toBeVisible();
+
+  // Sign out, then in as the admin.
+  await page.getByRole('button', { name: /Role Tester/ }).click();
+  await page.getByRole('button', { name: 'Sign out' }).click();
+  await signInAsAdmin(page, '/admin/users');
+
+  const row = page.getByRole('row').filter({ hasText: email });
+  await expect(row).toContainText('customer');
+
+  await row.getByRole('combobox').selectOption('ADMIN');
+  await expect(page.getByRole('row').filter({ hasText: email })).toContainText('admin');
+
+  await page.getByRole('row').filter({ hasText: email }).getByRole('combobox').selectOption('CUSTOMER');
+  await expect(page.getByRole('row').filter({ hasText: email })).toContainText('customer');
+
+  // Tidy up.
+  const token = await request
+    .post(`${API}/api/auth/login`, { data: { email: 'admin@pizza.test', password: 'admin123' } })
+    .then((r) => r.json())
+    .then((b: { token: string }) => b.token);
+  const users: Array<{ id: string; email: string }> = await request
+    .get(`${API}/api/admin/users`, { headers: { Authorization: `Bearer ${token}` } })
+    .then((r) => r.json());
+  const created = users.find((u) => u.email === email);
+  if (created) {
+    await request.delete(`${API}/api/admin/users/${created.id}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+  }
+});
+
+test('deleting a user removes them from the list', async ({ page }) => {
+  const email = `e2e-del-${Date.now()}@example.com`;
+  await page.goto('/register');
+  await page.getByLabel('Full name').fill('Delete Me');
+  await page.getByLabel('Email').fill(email);
+  await page.getByLabel('Password').fill('password123');
+  await page.getByRole('button', { name: 'Create account' }).click();
+  await expect(page.getByRole('button', { name: /Delete Me/ })).toBeVisible();
+
+  await page.getByRole('button', { name: /Delete Me/ }).click();
+  await page.getByRole('button', { name: 'Sign out' }).click();
+  await signInAsAdmin(page, '/admin/users');
+
+  await expect(page.getByRole('table').getByText(email)).toBeVisible();
+  await page.getByRole('row').filter({ hasText: email }).getByRole('button', { name: 'Delete' }).click();
+  await expect(page.getByRole('table').getByText(email)).toBeHidden();
+});
+
+test('a customer cannot reach the users tab', async ({ page }) => {
+  await page.goto('/login');
+  await page.getByLabel('Email').fill('customer@pizza.test');
+  await page.getByLabel('Password').fill('pizza123');
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await expect(page.getByRole('button', { name: /Demo Customer/ })).toBeVisible();
+
+  await page.goto('/admin/users');
+  await expect(page).toHaveURL('http://localhost:5173/');
+});

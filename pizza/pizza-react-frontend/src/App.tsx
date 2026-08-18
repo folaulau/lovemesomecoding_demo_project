@@ -33,6 +33,7 @@ const AdminProductsPage = lazy(() => import('./pages/admin/AdminProductsPage'));
 const AdminToppingsPage = lazy(() => import('./pages/admin/AdminToppingsPage'));
 const AdminCrustsPage = lazy(() => import('./pages/admin/AdminCrustsPage'));
 const AdminOrdersPage = lazy(() => import('./pages/admin/AdminOrdersPage'));
+const AdminUsersPage = lazy(() => import('./pages/admin/AdminUsersPage'));
 
 export default function App() {
   // The drawer's open/closed state lives here because both the navbar (which opens it) and the
@@ -104,6 +105,7 @@ export default function App() {
                 <Route path="toppings" element={<AdminToppingsPage />} />
                 <Route path="crusts" element={<AdminCrustsPage />} />
                 <Route path="orders" element={<AdminOrdersPage />} />
+                <Route path="users" element={<AdminUsersPage />} />
               </Route>
 
               <Route

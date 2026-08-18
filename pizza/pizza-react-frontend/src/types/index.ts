@@ -323,3 +323,15 @@ export interface PaymentMethod {
   expYear: number | null;
   primary: boolean;
 }
+
+/** A user account as an admin sees it. Still no password hash. */
+export interface AdminUser {
+  id: UUID;
+  email: string;
+  fullName: string | null;
+  role: 'CUSTOMER' | 'ADMIN';
+  orderCount: number;
+  addressCount: number;
+  paymentMethodCount: number;
+  createdAt: string;
+}

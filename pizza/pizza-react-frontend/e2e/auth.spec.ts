@@ -11,7 +11,8 @@ test('the login page offers the demo credentials and a guest reminder', async ({
   await page.goto('/login');
 
   await expect(page.getByRole('heading', { name: 'Sign in' })).toBeVisible();
-  await expect(page.getByText(/customer@pizza.test/)).toBeVisible();
+  // Scope to main: the footer's demo-sign-ins panel repeats these on every page.
+  await expect(page.getByRole('main').getByText(/customer@pizza.test/)).toBeVisible();
   await expect(page.getByText(/never have to sign in to order/)).toBeVisible();
 });
 

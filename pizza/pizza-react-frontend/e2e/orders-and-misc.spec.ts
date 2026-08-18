@@ -23,7 +23,8 @@ test('a customer sees their seeded order history', async ({ page }) => {
 
   await expect(page).toHaveURL(/\/orders/);
   await expect(page.getByRole('heading', { name: 'My orders' })).toBeVisible();
-  await expect(page.getByText('customer@pizza.test')).toBeVisible();
+  // Scope to main: the footer repeats this address in its demo-sign-ins panel.
+  await expect(page.getByRole('main').getByText('customer@pizza.test')).toBeVisible();
 
   // The seed gives this account several orders.
   const rows = page.locator('tbody tr');

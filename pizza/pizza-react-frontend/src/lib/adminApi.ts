@@ -1,5 +1,6 @@
 import { api } from './api';
 import type {
+  AdminUser,
   Crust,
   CrustWriteRequest,
   Order,
@@ -53,6 +54,12 @@ export const adminApi = {
   deactivateCrust: (id: UUID) =>
     api.patch<void>(`/api/admin/crusts/${id}/deactivate`, undefined, { auth: true }),
   deleteCrust: (id: UUID) => api.delete<void>(`/api/admin/crusts/${id}`, { auth: true }),
+
+  // ---------------------------------------------------------------- users
+  listUsers: () => api.get<AdminUser[]>('/api/admin/users', { auth: true }),
+  changeUserRole: (id: UUID, role: 'CUSTOMER' | 'ADMIN') =>
+    api.patch<AdminUser>(`/api/admin/users/${id}/role`, { role }, { auth: true }),
+  deleteUser: (id: UUID) => api.delete<void>(`/api/admin/users/${id}`, { auth: true }),
 
   // ---------------------------------------------------------------- orders
   listOrders: (page = 0, size = 20) =>

@@ -7,6 +7,7 @@ const TABS = [
   { to: '/admin/toppings', label: 'Toppings', end: false },
   { to: '/admin/crusts', label: 'Crusts', end: false },
   { to: '/admin/orders', label: 'Orders', end: false },
+  { to: '/admin/users', label: 'Users', end: false },
 ];
 
 /**
