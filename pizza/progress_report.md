@@ -4,7 +4,8 @@ Shared context for the pizza demo (React + Angular frontends, Spring Boot backen
 Read this first when resuming work.
 
 **Status:** Phases 0–6 complete, plus server-side carts, customer profiles (addresses + saved
-cards), a checkout address chooser, admin user management, and a full reports data audit.
+cards), a checkout address chooser, admin user management, a full reports data audit, and Redux
+on the admin side.
 **60 backend tests + 92 Playwright tests, all green.**
 **Last updated:** 2026-08-17
 
@@ -66,6 +67,7 @@ one and add a code comment explaining what production would do differently.
 | Frontend styling | **Bootstrap 5.3.8** | User's call. `react-bootstrap` 2.10.10 for React, `@ng-bootstrap/ng-bootstrap` 21.0.0 for Angular. |
 | Cart storage | **Browser only** (React Context + useReducer) | No cart table, no cart endpoints. Order rows created once, at checkout. ⚠️ **Later reversed** — see "Server-side carts". |
 | Pricing authority | **Server recomputes everything** | Client-sent prices are ignored. Deliberate teaching callout. |
+| Admin state | **Redux Toolkit**; customer pages stay on **Context** | User's call. The split is enforced by the tree — `<Provider>` wraps only the lazy admin route — so Redux never ships to customers. |
 | DAO backing | **Repository + JdbcTemplate in the same DAO impl** | Patterned on trademachine's `BalanceDAOImpl`. Repository for saves and single-row lookups; `JdbcTemplate` for anything that aggregates. See "Reports data audit". |
 
 ---
@@ -873,6 +875,86 @@ tests that never paid. Correctly reported, but they clutter the demo; clearing t
 
 ---
 
+## Redux on the admin side, Context on the customer side (DONE)
+
+Per the brief: **Redux Toolkit for admin pages, React Context for customer-facing pages.** All six
+admin screens are now store-driven; nothing customer-facing changed.
+
+```
+src/store/
+├── index.ts          configureStore + typed useAppDispatch / useAppSelector
+├── apiFailure.ts     flattens ApiError into something an action can carry
+├── catalogSlice.ts   products + toppings + crusts (one domain, one slice)
+├── ordersSlice.ts    paging, status filter, status transitions
+├── reportsSlice.ts   dashboard, cached per day-range
+└── usersSlice.ts     accounts, role changes, soft delete
+```
+
+### `<Provider>` goes in AdminLayout, not main.tsx
+That placement does two jobs at once. It makes the split structural — customer pages cannot reach
+the store even by accident — and it keeps Redux out of the customer bundle, because `AdminLayout`
+is behind `lazy()`.
+
+**Verified in the build output, not assumed:** the store compiles to its own `store-*.js` chunk
+(36 KB). The entry chunk's only mention of it is inside the lazy-route preload manifest — there is
+no static import — so a visitor who never opens `/admin` downloads none of it.
+
+### Slice boundaries follow the domain, not the screen
+Products, toppings and crusts share ONE slice despite having a tab each: they are one thing, the
+menu, and they change together. Three near-identical slices would have tripled the boilerplate to
+express something untrue.
+
+The remaining repetition (three fetch/save/delete triples) is deliberate. A `makeCrudSlice(name, api)`
+factory would collapse it to a third of the lines and make every one of them harder to follow —
+the wrong trade for code that exists to be read.
+
+### What stayed in useState — and why that is the point
+Only the LIST is store state. Which modal is open, what is typed into the form, and which field is
+invalid all remain `useState`: scratch state owned by one component, dead when it unmounts, useless
+to anyone else. Putting form keystrokes in a global store is the classic way to make Redux
+miserable. The rule is *shared* state goes in the store, not *all* state.
+
+Admin pages also still use `useAuth`, `useToast` and `useMenu`. Identity and toasts belong to the
+whole app, customer screens included, so moving them into an admin-only store would put them out of
+reach of half the app. "Redux for admin" is about admin **data**, not about banning Context.
+
+### ⚠️ Gotcha — an ApiError does not survive the trip through Redux
+A thunk that simply throws lands in `rejected` with `action.error`, which RTK builds via
+`miniSerializeError`: it keeps `name`, `message` and `stack` and discards everything else. Everything
+else is exactly what these forms need — `ApiError.fieldErrors()` is what puts "already exists" under
+the right input instead of in a generic banner.
+
+`apiFailure.ts` flattens the error at the edge into a plain `{message, fieldErrors}` and hands it to
+`rejectWithValue`. That also keeps the store serialisable, which is what RTK's dev-mode check is
+warning about when it complains at class instances in state.
+
+### ⚠️ Bug introduced and fixed — the same error shown twice
+Giving the catalog slice one shared `error` string meant a form validation failure set it too, so
+"already exists" appeared **both** under the form field and in a page-level banner behind the modal.
+Caught by an existing test asserting the message was visible — it found two matches.
+
+Now only a failed **fetch** becomes the page-level error. A failed save or delete is reported where
+it happened, through `unwrap()`. Shared error state is convenient right up to the point where one
+failure has more than one right place to be shown.
+
+### `.unwrap()` is not optional
+`dispatch(thunk())` RESOLVES even when the thunk rejects — it hands back the action object. A
+`try/catch` around a bare dispatch therefore never runs its catch, and every failure is reported to
+the user as a success. `.unwrap()` re-throws so normal `try/catch` works.
+
+### Test updated, deliberately
+`a deactivated product disappears from the public menu` waited for a follow-up `GET
+/api/admin/products` after the deactivate PATCH. There is no longer one to wait for: the slice
+patches the affected row in place rather than refetching the list, which is one round trip fewer.
+The PATCH is still awaited, so the public-menu assertion is still safe.
+
+### Known flakiness (pre-existing, not from this work)
+Two tests occasionally time out under load — `checkout preselects the primary address` (clicks while
+a Bootstrap modal is still fading) and `a stale cart id is discarded` (`waitForResponse`). Both pass
+24/24 and 34/34 on `--repeat-each=2`. Worth hardening if they start failing more often.
+
+---
+
 ## Open questions
 
 - Phase 7 (Angular against the same API) is the only planned work left.
@@ -881,3 +963,5 @@ tests that never paid. Correctly reported, but they clutter the demo; clearing t
 - The remaining DAOs (`Product`, `Topping`, `Crust`, `Cart`, `CustomerOrder`) are repository-only,
   because none of them currently needs a query that aggregates. Wire `JdbcTemplate` into one the
   moment it does, rather than pre-emptively.
+- The Angular frontend (Phase 7) has both patterns to copy from now — pick its state library
+  deliberately rather than by default.

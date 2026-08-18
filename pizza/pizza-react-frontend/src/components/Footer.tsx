@@ -1,4 +1,5 @@
 import { Container } from 'react-bootstrap';
+import { Link } from 'react-router-dom';
 
 /**
  * Site footer, including a collapsed panel of demo sign-ins.
@@ -42,8 +43,16 @@ export function Footer() {
           </div>
         </details>
 
-        <div className="d-flex flex-wrap justify-content-between gap-2 small">
+        <div className="d-flex flex-wrap justify-content-between align-items-center gap-2 small">
           <span>PizzaHub — a demo app for lovemesomecoding.com</span>
+          {/*
+            Linked from the footer rather than the navbar on purpose: the navbar has to keep looking
+            like a pizza chain's, and a "Interview questions" tab beside "Menu" would break that.
+            Anyone who wants it will look down here or follow a direct link.
+          */}
+          <Link to="/interview-questions" className="link-light">
+            Senior interview questions
+          </Link>
           <span>Not a real restaurant. Please do not expect a pizza.</span>
         </div>
       </Container>

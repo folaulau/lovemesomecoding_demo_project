@@ -27,6 +27,15 @@ import { ProfilePage } from './pages/ProfilePage';
  *
  * The lazily-imported module must have a DEFAULT export.
  * ========================================================================== */
+/*
+ * Lazy, for the same reason the admin bundle is: twenty long answers plus their code samples are
+ * pure dead weight for somebody who came here to order a pizza. It is a public route, just not one
+ * on the critical path.
+ */
+const InterviewQuestionsPage = lazy(() =>
+  import('./pages/InterviewQuestionsPage').then((m) => ({ default: m.InterviewQuestionsPage })),
+);
+
 const AdminLayout = lazy(() => import('./pages/admin/AdminLayout'));
 const AdminReportsPage = lazy(() => import('./pages/admin/AdminReportsPage'));
 const AdminProductsPage = lazy(() => import('./pages/admin/AdminProductsPage'));
@@ -64,6 +73,7 @@ export default function App() {
               <Route path="/order-confirmation/:orderId" element={<OrderConfirmationPage />} />
               <Route path="/login" element={<LoginPage />} />
               <Route path="/register" element={<RegisterPage />} />
+              <Route path="/interview-questions" element={<InterviewQuestionsPage />} />
 
               {/* Signed-in customers only. */}
               <Route
