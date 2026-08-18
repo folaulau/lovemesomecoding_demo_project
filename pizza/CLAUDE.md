@@ -174,7 +174,7 @@ the current one as burned and **roll it in the Stripe dashboard**.
 ## Running it
 
 ```bash
-# backend — needs local MySQL (root, empty password), database `pizza`
+# backend — needs MySQL (root, empty password), database `pizza`
 cd pizza-springboot-backend && ./mvnw spring-boot:run     # :8085, Swagger at /swagger-ui.html
 ./mvnw test                                               # 60 tests
 ./mvnw spotless:apply                                     # before committing Java
@@ -182,6 +182,41 @@ cd pizza-springboot-backend && ./mvnw spring-boot:run     # :8085, Swagger at /s
 # frontend
 cd pizza-react-frontend && nvm use && npm run dev          # :5173
 ```
+
+### Backing services — `pizza-springboot-backend/docker-compose.yml`
+
+MySQL is the only service the app needs. Everything else sits behind a **compose profile named
+after the Spring profile that requires it**, so the default `up` starts one container and a plain
+`./mvnw spring-boot:run` behaves exactly as it always has.
+
+```bash
+docker compose up -d                       # MySQL only
+docker compose --profile search up -d      # + Elasticsearch  :9200
+docker compose --profile messaging up -d   # + Artemis        :61616, console :8161 (admin/admin)
+docker compose --profile mail up -d        # + Mailpit        SMTP :1025, inbox :8025
+docker compose --profile all up -d         # everything
+docker compose down                        # stop; `down -v` also wipes the data
+```
+
+**The container publishes MySQL on 3308, not 3306**, because 3306 belongs to the MySQL installed on
+the machine. `application.properties` still points at 3306, so a native install keeps working —
+add the `docker` profile to use the container instead:
+
+```bash
+./mvnw spring-boot:run -Dspring-boot.run.profiles=local,docker
+./mvnw spring-boot:run -Dspring-boot.run.profiles=local,docker,search,messaging
+```
+
+⚠️ **The `messaging` profile needs credentials, and they are not optional.** Boot's default is to
+connect to Artemis *anonymously*, and the broker rejects that with one unhelpful line —
+`AMQ229031: Unable to validate user: null`, which sounds like a wrong password rather than an
+absent one. `application-messaging.properties` supplies them; they must match `ARTEMIS_USER` /
+`ARTEMIS_PASSWORD` in the compose file.
+
+⚠️ **Health-check a container with a command that container actually has.** The Artemis image ships
+no `curl`, so a `curl`-based check reports `unhealthy` forever while the broker serves happily —
+and `up --wait` then fails pointing at the wrong thing. It uses `artemis check node` instead, which
+probes the messaging port rather than the web console.
 
 Demo logins: `admin@pizza.test` / `admin123` · `customer@pizza.test` / `pizza123`.
 

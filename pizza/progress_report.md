@@ -7,10 +7,14 @@ Read this first when resuming work.
 cards), a checkout address chooser, admin user management, a full reports data audit, and Redux
 on the admin side.
 **60 backend tests + 92 Playwright tests, all green.**
-**Last updated:** 2026-08-17
+**Last updated:** 2026-08-18
+
+**Run the backing services:** `cd pizza-springboot-backend && docker compose up -d` → MySQL on
+**3308** · add `--profile search|messaging|mail|all` for the optional ones
 
 **Run the backend:** `cd pizza-springboot-backend && ./mvnw spring-boot:run` → http://localhost:8085
 · Swagger UI at http://localhost:8085/swagger-ui.html
+· against the containers instead of a native MySQL: `-Dspring-boot.run.profiles=local,docker`
 
 **Run the frontend:** `cd pizza-react-frontend && nvm use && npm run dev` → http://localhost:5173
 · `npm run test:all` — **the whole suite, 92 tests** (this is the one to run)
@@ -952,6 +956,87 @@ The PATCH is still awaited, so the public-menu assertion is still safe.
 Two tests occasionally time out under load — `checkout preselects the primary address` (clicks while
 a Bootstrap modal is still fading) and `a stale cart id is discarded` (`waitForResponse`). Both pass
 24/24 and 34/34 on `--repeat-each=2`. Worth hardening if they start failing more often.
+
+---
+
+## Backing services in Docker Compose (DONE)
+
+`pizza-springboot-backend/docker-compose.yml`. The app is deliberately **not** in it: it runs from
+Maven so a code change is a restart rather than an image rebuild. The file provides only what the
+app talks to over a socket.
+
+### What the backend actually needs
+
+An audit of the pom, the properties files and every `@Profile` found four services and no others:
+
+| Service | Required? | Gate |
+|---|---|---|
+| MySQL | yes | always |
+| Elasticsearch | no | Spring profile `search` |
+| ActiveMQ Artemis | no | Spring profile `messaging` |
+| Mailpit (SMTP sink) | no | only when `spring.mail.host` is set |
+
+Nothing else earns a container. The cache is `ConcurrentMapCacheManager`, which is in-JVM — no
+Redis. Stripe and Google OAuth are remote APIs.
+
+### Compose profiles mirror the Spring profiles
+
+Each optional service sits behind a compose profile named after the Spring profile that needs it,
+so `docker compose up -d` starts MySQL alone and the default `./mvnw spring-boot:run` is unchanged.
+That is the same reasoning `@Profile("messaging")` already applies in `MessagingConfig`: the
+zero-argument path must stay MySQL and nothing else.
+
+### MySQL publishes 3308
+
+3306 belongs to the MySQL installed on this machine. `application.properties` still points at 3306,
+so a native install keeps working; **`application-docker.properties` (new)** overrides only the URL
+to 3308 and is opted into with `-Dspring-boot.run.profiles=local,docker`. Changing the default
+would have broken whoever is not using containers, to save one profile name.
+
+### ⚠️ Gap found — the `messaging` profile could not have authenticated
+
+There was no `application-messaging.properties` at all, so Boot connected to Artemis with
+`mode=native` and **no credentials**, which any secured broker rejects. The broker's reply is one
+line — `AMQ229031: Unable to validate user from …. Username: null` — and it reads like a wrong
+password rather than an absent one. The new file supplies `spring.artemis.user`/`password`; they
+must stay in step with `ARTEMIS_USER`/`ARTEMIS_PASSWORD` in the compose file. Seen for real during
+verification, before the file existed.
+
+### ⚠️ Gotcha — a healthcheck can only run commands the image contains
+
+The first Artemis healthcheck was `curl -fs http://localhost:8161/console`. The image has no curl,
+so the check failed forever, `docker compose up --wait` reported `container pizza-artemis is
+unhealthy`, and the broker was in fact up and serving the whole time — the log said
+`AMQ221007: Server is now active`. Replaced with `artemis check node`, which ships with the image
+and probes **61616**, the port Spring actually connects to, rather than the web console.
+
+MySQL has the same trap in a milder form: without a healthcheck the container is "up" several
+seconds before it accepts a connection, and the app races it to a connection refused.
+
+### Elasticsearch note
+
+Another project on this machine was publishing an Elasticsearch on 9200, which is worse than a port
+clash — pointing at it would not fail, it would index the pizza menu into somebody else's cluster.
+That container was retired, so ours uses the default 9200. Its heap is pinned to 512 MB because
+Elasticsearch otherwise sizes it from the **host's** total RAM for the sake of 14 products.
+
+### Verified against the running stack, not assumed
+
+- `docker compose --profile all up -d --wait` → all four healthy.
+- Liquibase ran all 35 changesets into the 3308 container; Hibernate `validate` passed against
+  MySQL 8.4; `/api/products` served the 14 seeded products from it.
+- Elasticsearch: admin reindex returned `Reindexed 14 products`; `?q=pepperoni` returned 3 relevant
+  hits; the index reported 14 docs.
+- Artemis: `artemis queue stat --queueName pizza.orders` showed **consumer count 1** — the listener
+  authenticated and subscribed.
+- Mailpit accepted a message on 1025 and served it back from the inbox API.
+
+### ⚠️ A running instance masks all of this
+
+The first verification run "passed" against a **different** app instance already listening on 8085
+from an earlier session — the new process had failed to bind and died, while curl happily answered
+from the old one. The same trap as the stale-classes note above, wearing different clothes. Every
+later check ran on 8086 to keep the two apart.
 
 ---
 
