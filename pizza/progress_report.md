@@ -6,14 +6,14 @@ Read this first when resuming work.
 **Status:** Phases 0–6 complete, plus server-side carts, customer profiles (addresses + saved
 cards), a checkout address chooser, admin user management, a full reports data audit, and Redux
 on the admin side.
-**60 backend tests + 92 Playwright tests, all green.**
+**60 backend tests + 100 Playwright tests, all green.**
 **Last updated:** 2026-08-17
 
 **Run the backend:** `cd pizza-springboot-backend && ./mvnw spring-boot:run` → http://localhost:8085
 · Swagger UI at http://localhost:8085/swagger-ui.html
 
 **Run the frontend:** `cd pizza-react-frontend && nvm use && npm run dev` → http://localhost:5173
-· `npm run test:all` — **the whole suite, 92 tests** (this is the one to run)
+· `npm run test:all` — **the whole suite, 100 tests** (this is the one to run)
 · `npm run test:e2e` — customer flows · `npm run test:admin` — admin CRUD + reports
   (**all of these need the backend running**)
 · `STRIPE_SECRET_KEY=sk_test_… npm run test:payment` — payment integration
@@ -647,7 +647,7 @@ failure cannot poison the next run.
 
 ## Phase 6 — UI test sweep (DONE)
 
-Every flow is now driven through the browser. **92 Playwright tests**, split by concern:
+Every flow is now driven through the browser. **100 Playwright tests**, split by concern:
 
 | Spec | Covers |
 |---|---|
@@ -658,6 +658,7 @@ Every flow is now driven through the browser. **92 Playwright tests**, split by 
 | `orders-and-misc.spec.ts` | history, confirmation, 404s, footer, API-down recovery |
 | `profile.spec.ts` | addresses CRUD, primary switching, saved cards, checkout chooser |
 | `admin.spec.ts` | reports, product/topping/crust CRUD, order status, deactivation |
+| `interview-questions.spec.ts` | the questions page: filtering, search, accordion, data completeness |
 | `api-guards.spec.ts` | the two guarantees not observable through the UI |
 | `payment.spec.ts` | order → Stripe charge → PAID (skips without `STRIPE_SECRET_KEY`) |
 | `screenshots.spec.ts` / `admin-screens.spec.ts` | capture-only, excluded from `test:all` |
@@ -952,6 +953,56 @@ The PATCH is still awaited, so the public-menu assertion is still safe.
 Two tests occasionally time out under load — `checkout preselects the primary address` (clicks while
 a Bootstrap modal is still fading) and `a stale cart id is discarded` (`waitForResponse`). Both pass
 24/24 and 34/34 on `--repeat-each=2`. Worth hardening if they start failing more often.
+
+---
+
+## Interview-questions page (DONE)
+
+`/interview-questions` — 20 senior-level questions with answers, every one drawn from a real
+decision or a real bug recorded in this file. That constraint is the whole value: question banks
+assembled from blog posts reward recall, these reward having shipped something. Several describe a
+bug that reached a running app before anyone noticed.
+
+Content lives in `src/data/interviewQuestions.ts` as plain data — question, answer paragraphs, an
+optional code sample, and a `seniorSignal` naming what separates a good answer from a senior one.
+Spread: JPA & Hibernate 4 · API & security 5 · SQL & data modelling 3 · React 3 · State management
+3 · Testing 2.
+
+### Placement
+Public route, **linked from the footer rather than the navbar** — the navbar has to keep looking
+like a pizza chain's, and an "Interview questions" tab beside "Menu" would break that.
+
+**Lazy-loaded**, and verified in the build rather than assumed: it compiles to its own 32 KB chunk,
+the entry chunk contains zero occurrences of the question text, and there is no static import.
+
+### State: none shared, so none stored
+No Context and no Redux. Nothing on this page is shared with another screen, so it is plain local
+state — the other half of the rule the Redux work established. The page does earn three React
+points worth pointing at in a tutorial:
+
+- **`useDeferredValue`** on the search box, so typing stays responsive while the filtered list
+  re-renders behind it. `useMemo` is keyed on the DEFERRED value, not the live one — memoising
+  against the live value would recompute on every keystroke and defeat the point.
+- **Derived, not stored** — the visible list and the counts are computed, never held in `useState`,
+  so there is nothing that can disagree with the source data.
+
+### ⚠️ Gotcha — the category badge poisons every accordion locator
+Each accordion header renders its category badge first, so the header's accessible name *begins*
+with the category. `getByRole('button', {name: /^Testing/})` therefore matched the filter button
+AND both Testing questions — three elements, strict-mode violation.
+
+Fixed by giving the filter row `role="group" aria-label="Filter by category"` and counting questions
+as `.accordion-item` rather than by matching their text. Precisely the trap described in this page's
+own question about tests passing for the wrong reason, hit while writing that question's tests.
+
+### ⚠️ Seeded state drifted — and the tests blamed themselves
+Four unrelated tests failed on `expected 14, received 13`. Nothing was wrong with them: **Diet Pepsi
+had been deactivated through the admin UI** and never restored, so it dropped out of `/api/products`.
+
+Worth knowing because the failure is misdirecting — the suite asserts absolute seeded counts, so any
+manual click in the admin panel surfaces later as a broken test somewhere else entirely. Restored
+with `UPDATE product SET active = 1 WHERE name = 'Diet Pepsi'`, checked against `002-seed-menu.sql`.
+Making those assertions relative would remove the trap at the cost of a weaker test.
 
 ---
 

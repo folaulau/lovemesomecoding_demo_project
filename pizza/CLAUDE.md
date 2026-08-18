@@ -26,6 +26,9 @@ instructions; that one is the state.
 - `/admin`: manage products, toppings, crusts, orders and users.
 - `/admin` reports: revenue over time, top products, orders by status, headline totals — all from
   real database aggregates, never mock data.
+- `/interview-questions`: 20 senior-level questions and answers, every one drawn from a real
+  decision or a real bug in this codebase. Linked from the footer, not the navbar — the navbar has
+  to keep looking like a pizza chain's. Lazy-loaded, so it costs a customer nothing.
 
 ### Still open
 - **Checkout does not yet offer saved cards** — it always collects a fresh one. Cards can be saved
@@ -110,7 +113,9 @@ src/
 │                ProtectedRoute · StripePaymentForm · ErrorBoundary
 ├── context/     AuthContext · CartContext · MenuContext · ToastContext
 ├── lib/         api.ts (the only place that calls fetch) · adminApi · profileApi · stripe · money
+├── data/        interviewQuestions.ts — the question bank, plain data
 ├── pages/       Home · Menu · Checkout · OrderConfirmation · Login · Register · Orders · Profile
+│   │            InterviewQuestions
 │   └── admin/   AdminLayout + Reports · Products · Toppings · Crusts · Orders · Users
 ├── store/       Redux Toolkit — admin only (see below)
 ├── styles/      _tokens.scss · theme.scss (Bootstrap variable overrides, not !important)
@@ -203,6 +208,10 @@ is especially prone to this after an external Maven build.
 - The suite is **serial** (`fullyParallel: false, workers: 1`) — it is integration testing against
   one backend and one database.
 - Tests must clean up what they create, or a failure poisons every later run.
+- ⚠️ Several tests assert **absolute seeded counts** (14 products, 6 drinks). Hiding or deleting a
+  seeded row through the admin UI while demoing will therefore break the suite, and the failure
+  points at the test rather than at what you clicked. Restore the seeded state, or make the
+  assertion relative, before assuming a regression.
 - Aim for ~90% coverage of changes. Verify against SQL rather than trusting a green screen.
 
 ---

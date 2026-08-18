@@ -40,3 +40,9 @@ src/main/resources/application-*.local.properties
 
 # Uploaded product images (see pizza.storage.upload-dir)
 uploads/
+
+# Gradle (see the springboot-tutorial-gradle branch)
+.gradle/
+# The repo root ignores *.jar, which would swallow the wrapper jar too. Without it
+# ./gradlew cannot bootstrap on a fresh clone, so this negation is required, not optional.
+!gradle/wrapper/gradle-wrapper.jar
