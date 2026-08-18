@@ -158,3 +158,60 @@ test('the summary lists every line before the order is created', async ({ page }
   await expect(summary.getByText(/Cheese Pizza/)).toBeVisible();
   await expect(summary.getByText(/Pepsi/)).toBeVisible();
 });
+
+test('delivery and pickup can be switched on the checkout page itself', async ({ page }) => {
+  await addPizzaAndGoToCheckout(page);
+
+  /*
+   * Scope to this card. The cart drawer also has Delivery/Carryout buttons and stays in the DOM
+   * while hidden, so an unscoped locator matches two elements.
+   */
+  const options = page
+    .getByRole('heading', { name: 'How would you like it?' })
+    .locator('xpath=ancestor::div[contains(@class,"card-body")]');
+
+  // Delivery is the default, so the address block and the fee are both present.
+  await expect(options.getByRole('button', { name: /^Delivery/ })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+  await expect(page.getByRole('heading', { name: 'Delivery address' })).toBeVisible();
+
+  // Scope the fee too — the hidden cart drawer shows the same figure.
+  const summary = page
+    .getByRole('heading', { name: /Order summary/ })
+    .locator('xpath=ancestor::div[contains(@class,"card-body")]');
+  await expect(summary.getByText('$3.99', { exact: true })).toBeVisible();
+
+  // Switching to pickup drops the fee and the address requirement.
+  await options.getByRole('button', { name: /^Pick up/ }).click();
+  await expect(options.getByRole('button', { name: /^Pick up/ })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+  await expect(page.getByRole('heading', { name: 'Delivery address' })).toBeHidden();
+  await expect(summary.getByText('$3.99', { exact: true })).toBeHidden();
+  await expect(page.getByText(/Order summary · carryout/)).toBeVisible();
+
+  // …and back again.
+  await options.getByRole('button', { name: /^Delivery/ }).click();
+  await expect(page.getByRole('heading', { name: 'Delivery address' })).toBeVisible();
+});
+
+test('switching to pickup at checkout produces an order with no delivery fee', async ({ page }) => {
+  await addPizzaAndGoToCheckout(page);
+
+  await page
+    .getByRole('heading', { name: 'How would you like it?' })
+    .locator('xpath=ancestor::div[contains(@class,"card-body")]')
+    .getByRole('button', { name: /^Pick up/ })
+    .click();
+  await page.getByLabel('Name').fill('Pickup Tester');
+  await page.getByLabel('Email').fill('pickup@example.com');
+  await page.getByRole('button', { name: /Continue to payment/ }).click();
+
+  // 16.99 + 1.44 tax, no 3.99 fee.
+  await expect(page.getByRole('button', { name: /^Pay \$18\.43$/ })).toBeVisible({
+    timeout: 20_000,
+  });
+});

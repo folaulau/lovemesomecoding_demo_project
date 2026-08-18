@@ -205,3 +205,52 @@ body {
 .admin-nav .nav-link.active {
   font-weight: 700;
 }
+
+/* ---------------------------------------------------------------- demo logins
+ *
+ * The collapsed credentials panel in the footer. Styled here rather than inline so the footer
+ * component stays about content.
+ */
+.demo-logins {
+  border: 1px solid rgb(255 255 255 / 15%);
+  border-radius: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  max-width: 34rem;
+}
+
+.demo-logins > summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: #fff;
+  list-style: none;
+  font-size: 0.875rem;
+}
+
+/* Replace the default triangle with one that rotates, in both engines. */
+.demo-logins > summary::-webkit-details-marker {
+  display: none;
+}
+
+.demo-logins > summary::before {
+  content: '▸';
+  display: inline-block;
+  margin-right: 0.5rem;
+  transition: transform 0.15s ease;
+}
+
+.demo-logins[open] > summary::before {
+  transform: rotate(90deg);
+}
+
+.demo-logins code {
+  color: #ffb3bd;
+  background: rgb(255 255 255 / 8%);
+  padding: 0.05rem 0.3rem;
+  border-radius: 0.25rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .demo-logins > summary::before {
+    transition: none;
+  }
+}

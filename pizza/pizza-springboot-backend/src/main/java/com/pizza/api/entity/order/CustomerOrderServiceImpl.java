@@ -10,6 +10,7 @@ import com.pizza.api.exception.ApiException;
 import com.pizza.api.payment.StripeService;
 import com.stripe.exception.StripeException;
 import com.stripe.model.PaymentIntent;
+import com.stripe.model.PaymentMethod;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -122,6 +123,7 @@ public class CustomerOrderServiceImpl implements CustomerOrderService {
                 PaymentIntent intent = stripeService.retrieve(order.getStripePaymentIntentId());
                 if ("succeeded".equals(intent.getStatus())) {
                     order.setStatus(OrderStatus.PAID);
+                    captureCardDetails(order, intent);
                     orderDAO.save(order);
                 }
             } catch (StripeException ex) {
@@ -166,6 +168,11 @@ public class CustomerOrderServiceImpl implements CustomerOrderService {
                             // only move an order forward from PENDING_PAYMENT.
                             if (order.getStatus() == OrderStatus.PENDING_PAYMENT) {
                                 order.setStatus(OrderStatus.PAID);
+                                try {
+                                    captureCardDetails(order, stripeService.retrieve(paymentIntentId));
+                                } catch (StripeException ex) {
+                                    log.warn("Could not read card details for {}", paymentIntentId, ex);
+                                }
                                 orderDAO.save(order);
                                 log.info("Order {} marked PAID via webhook", order.getPublicId());
                             } else {
@@ -176,6 +183,49 @@ public class CustomerOrderServiceImpl implements CustomerOrderService {
                             }
                         },
                         () -> log.warn("Webhook referenced unknown PaymentIntent {}", paymentIntentId));
+    }
+
+    /**
+     * Records WHICH card paid, for display on the confirmation page and order history.
+     *
+     * <p>Only the brand and last four digits are kept — the same display metadata Stripe reports.
+     * The order deliberately does not keep the payment-method token: it needs to say which card was
+     * used, never to be able to charge it again.
+     *
+     * <p>Best-effort. A failure here must never stop an order being marked paid — the customer's
+     * money has already moved, and a missing "Visa ending 4242" is cosmetic.
+     */
+    private void captureCardDetails(CustomerOrder order, PaymentIntent intent) {
+        try {
+            String paymentMethodId = intent.getPaymentMethod();
+            if (paymentMethodId == null) {
+                return;
+            }
+
+            PaymentMethod method = stripeService.retrievePaymentMethod(paymentMethodId);
+            PaymentMethod.Card card = method.getCard();
+
+            if (card != null) {
+                order.setCardBrand(card.getBrand());
+                order.setCardLast4(card.getLast4());
+                return;
+            }
+
+            /*
+             * Not every payment method is a card.
+             *
+             * Stripe Elements also offers wallets — Link, Cash App Pay, Klarna — and those have no
+             * `card` object at all, not on the PaymentMethod and not on the Charge either. Assuming
+             * a card is always there is why this silently recorded nothing at first.
+             *
+             * So fall back to the payment method's TYPE. "Paid with Link" is honest and useful;
+             * inventing a last4 that Stripe never gave us would not be.
+             */
+            order.setCardBrand(method.getType());
+            order.setCardLast4(null);
+        } catch (StripeException ex) {
+            log.warn("Could not read the payment method used for order {}", order.getPublicId(), ex);
+        }
     }
 
     private OrderDTO toDtoWithItems(UUID id) {

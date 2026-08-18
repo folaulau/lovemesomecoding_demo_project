@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Alert, Badge, Card, Container, ListGroup, Spinner } from 'react-bootstrap';
+import { Alert, Badge, Card, Col, Container, ListGroup, Row, Spinner } from 'react-bootstrap';
 import { Link, useParams } from 'react-router-dom';
 import { api } from '../lib/api';
 import { formatMoney } from '../lib/money';
@@ -129,6 +129,75 @@ export function OrderConfirmationPage() {
                   locally, or refresh this page in a moment.
                 </Alert>
               )}
+
+              {/*
+                Where it is going, and what paid for it. Both come from the order the SERVER
+                returns — the browser is not remembering anything from checkout.
+              */}
+              <Row className="g-3 mb-3">
+                {order.orderType === 'DELIVERY' && order.addressLine1 && (
+                  <Col sm={6}>
+                    <div className="text-muted small text-uppercase">Delivering to</div>
+                    <div className="small">
+                      {order.customerName}
+                      <br />
+                      {order.addressLine1}
+                      {order.addressLine2 && (
+                        <>
+                          <br />
+                          {order.addressLine2}
+                        </>
+                      )}
+                      <br />
+                      {order.city}, {order.state} {order.postalCode}
+                      {order.phone && (
+                        <>
+                          <br />
+                          {order.phone}
+                        </>
+                      )}
+                    </div>
+                  </Col>
+                )}
+
+                {order.orderType === 'CARRYOUT' && (
+                  <Col sm={6}>
+                    <div className="text-muted small text-uppercase">Collection</div>
+                    <div className="small">
+                      Carryout — {order.customerName}
+                      {order.phone && (
+                        <>
+                          <br />
+                          {order.phone}
+                        </>
+                      )}
+                    </div>
+                  </Col>
+                )}
+
+                <Col sm={6}>
+                  <div className="text-muted small text-uppercase">Paid with</div>
+                  <div className="small">
+                    {order.cardLast4 ? (
+                      <>
+                        <span className="text-capitalize">{order.cardBrand ?? 'Card'}</span> ending{' '}
+                        <strong>{order.cardLast4}</strong>
+                      </>
+                    ) : order.cardBrand ? (
+                      /*
+                       * A wallet — Link, Cash App Pay, Klarna. Stripe exposes no card brand or
+                       * last4 for these, so naming the method is the honest thing to show.
+                       */
+                      <span className="text-capitalize">{order.cardBrand}</span>
+                    ) : order.status === 'PENDING_PAYMENT' ? (
+                      'Awaiting payment'
+                    ) : (
+                      // Seeded demo orders have no real Stripe payment behind them.
+                      <span className="text-muted">Not recorded</span>
+                    )}
+                  </div>
+                </Col>
+              </Row>
 
               <ListGroup variant="flush" className="mb-3">
                 {order.items.map((item) => (

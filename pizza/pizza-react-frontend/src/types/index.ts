@@ -134,6 +134,9 @@ export interface Order {
   tax: number;
   deliveryFee: number;
   total: number;
+  /** Which card paid, for display only. Null until the payment succeeds. */
+  cardBrand: string | null;
+  cardLast4: string | null;
   createdAt: string;
   updatedAt: string;
   items: OrderItem[];

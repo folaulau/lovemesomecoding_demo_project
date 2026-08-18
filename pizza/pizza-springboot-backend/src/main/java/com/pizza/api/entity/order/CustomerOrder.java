@@ -121,6 +121,18 @@ public class CustomerOrder implements Serializable {
     @Column(name = "stripe_payment_intent_id", length = 120)
     private String stripePaymentIntentId;
 
+    /**
+     * Which card paid, for display only.
+     *
+     * <p>Captured from Stripe once the payment succeeds. Deliberately NOT a payment-method token:
+     * an order needs to say which card was used, never to be able to charge it again.
+     */
+    @Column(name = "card_brand", length = 40)
+    private String cardBrand;
+
+    @Column(name = "card_last4", length = 4)
+    private String cardLast4;
+
     @Builder.Default
     @Column(name = "deleted", nullable = false)
     private boolean deleted = false;

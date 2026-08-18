@@ -56,6 +56,73 @@ test('the confirmation page shows a completed order as COMPLETED', async ({ page
   await expect(page.getByText(/^(COMPLETED|PAID|PREPARING)$/).first()).toBeVisible();
 });
 
+test('the confirmation page shows the delivery address and how it was paid', async ({
+  page,
+  request,
+}) => {
+  // Place a real order and pay it with Stripe's test Visa, so there IS a last4 to show.
+  const products = await (await request.get('http://localhost:8085/api/products?type=PIZZA')).json();
+  const created = await (
+    await request.post('http://localhost:8085/api/orders', {
+      data: {
+        orderType: 'DELIVERY',
+        customerName: 'Receipt Tester',
+        guestEmail: 'receipt@example.com',
+        phone: '801-555-0123',
+        addressLine1: '55 Receipt Rd',
+        city: 'Provo',
+        state: 'UT',
+        postalCode: '84601',
+        items: [{ productId: products[0].id, size: 'LARGE', quantity: 1 }],
+      },
+    })
+  ).json();
+
+  const secret: string | undefined = process.env.STRIPE_SECRET_KEY;
+  test.skip(!secret, 'Set STRIPE_SECRET_KEY to exercise the paid-with line.');
+
+  const intentId = created.clientSecret.split('_secret_')[0];
+  await request.post(`https://api.stripe.com/v1/payment_intents/${intentId}/confirm`, {
+    headers: {
+      Authorization: `Bearer ${secret}`,
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
+    form: { payment_method: 'pm_card_visa', return_url: 'http://localhost:5173/checkout' },
+  });
+
+  await page.goto(`/order-confirmation/${created.order.id}`);
+  await expect(page.getByRole('heading', { name: 'Order confirmed' })).toBeVisible();
+
+  // Where it is going…
+  await expect(page.getByText('Delivering to')).toBeVisible();
+  await expect(page.getByText('55 Receipt Rd')).toBeVisible();
+  await expect(page.getByText('Provo, UT 84601')).toBeVisible();
+
+  // …and what paid for it. Brand + last four only — never a card number.
+  await expect(page.getByText('Paid with')).toBeVisible();
+  await expect(page.getByText(/ending/)).toBeVisible();
+  await expect(page.getByText('4242')).toBeVisible();
+});
+
+test('a carryout order shows collection details, not an address', async ({ page, request }) => {
+  const products = await (await request.get('http://localhost:8085/api/products?type=PIZZA')).json();
+  const created = await (
+    await request.post('http://localhost:8085/api/orders', {
+      data: {
+        orderType: 'CARRYOUT',
+        customerName: 'Pickup Tester',
+        guestEmail: 'pickup@example.com',
+        items: [{ productId: products[0].id, size: 'LARGE', quantity: 1 }],
+      },
+    })
+  ).json();
+
+  await page.goto(`/order-confirmation/${created.order.id}`);
+  await expect(page.getByText('Collection')).toBeVisible();
+  await expect(page.getByText(/Carryout — Pickup Tester/)).toBeVisible();
+  await expect(page.getByText('Delivering to')).toBeHidden();
+});
+
 test('an unknown order id shows an error rather than a blank page', async ({ page }) => {
   await page.goto('/order-confirmation/00000000-0000-4000-8000-000000000000');
 
@@ -85,6 +152,44 @@ test('the footer is present on every page', async ({ page }) => {
     await page.goto(path);
     await expect(page.getByText(/a demo app for lovemesomecoding.com/)).toBeVisible();
   }
+});
+
+test('the footer hides the demo sign-ins until you expand them', async ({ page }) => {
+  await page.goto('/');
+
+  const panel = page.locator('details.demo-logins');
+  await expect(panel).toBeVisible();
+
+  // Collapsed by default — credentials are not sitting on screen unasked.
+  await expect(page.getByText('admin@pizza.test')).toBeHidden();
+
+  await page.getByText('Demo sign-ins').click();
+
+  await expect(page.getByText('admin@pizza.test')).toBeVisible();
+  await expect(page.getByText('admin123')).toBeVisible();
+  await expect(page.getByText('customer@pizza.test')).toBeVisible();
+  await expect(page.getByText('pizza123')).toBeVisible();
+
+  // And it folds away again.
+  await page.getByText('Demo sign-ins').click();
+  await expect(page.getByText('admin@pizza.test')).toBeHidden();
+});
+
+test('the footer credentials actually sign an admin in', async ({ page }) => {
+  await page.goto('/');
+  await page.getByText('Demo sign-ins').click();
+
+  // Read the credentials off the page, then use them — proving they are not stale copy.
+  const email = (await page.locator('details.demo-logins code').first().textContent()) ?? '';
+  const password = (await page.locator('details.demo-logins code').nth(1).textContent()) ?? '';
+
+  await page.goto('/admin');
+  await page.getByLabel('Email').fill(email.trim());
+  await page.getByLabel('Password').fill(password.trim());
+  await page.getByRole('button', { name: 'Sign in' }).click();
+
+  await expect(page).toHaveURL(/\/admin/);
+  await expect(page.getByRole('heading', { name: 'Sales reports' })).toBeVisible();
 });
 
 test('the menu recovers when the API is unreachable', async ({ page }) => {

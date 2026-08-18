@@ -4,7 +4,7 @@ Shared context for the pizza demo (React + Angular frontends, Spring Boot backen
 Read this first when resuming work.
 
 **Status:** Phases 0–6 complete, plus server-side carts, customer profiles (addresses + saved
-cards) and a checkout address chooser. **55 backend tests + 81 Playwright tests, all green.**
+cards) and a checkout address chooser. **55 backend tests + 85 Playwright tests, all green.**
 **Last updated:** 2026-08-17
 
 **Run the backend:** `cd pizza-springboot-backend && ./mvnw spring-boot:run` → http://localhost:8085
@@ -713,6 +713,36 @@ while the card stayed chargeable.
 `/api/me/**` takes no user id: the owner comes from the verified token, which removes a whole class
 of "read someone else's data" bug by construction. An address belonging to another account returns
 **404, not 403** — a 403 would confirm the id is real.
+
+---
+
+## Order receipt details + checkout order-type (DONE)
+
+The confirmation page now shows **where it is going** and **what paid for it**, and the
+delivery/pickup choice is available on the checkout page itself rather than only in the cart
+drawer (it changes the price and which fields are required, so making the customer go back was
+needless friction).
+
+`customer_order` gained `card_brand` / `card_last4` (changeset 009), captured from Stripe when the
+payment succeeds — via both the polling path and the webhook. Same rule as saved cards: **display
+metadata only**, no token, no card number. An order needs to say which card was used, never to be
+able to charge it again.
+
+### ⚠️ Not every payment method is a card
+The first implementation silently recorded nothing, and the reason was not a bug in our code:
+Stripe Elements also offers **wallets** — Link, Cash App Pay, Klarna — and those have no `card`
+object at all, neither on the PaymentMethod nor on the Charge. Verified directly against Stripe's
+API for a real Link payment: `payment_method.card` and `payment_method_details.card` are both null.
+
+So the capture falls back to the payment method's **type**, and the UI shows "Link" instead of
+inventing a last4 Stripe never gave us. A genuine card still reads "Visa ending 4242".
+
+### Note on spring-boot-devtools
+Devtools was added to the pom mid-session. Its auto-restart fires while an external
+`./mvnw compile` is still writing classes, and it failed with
+`NoClassDefFoundError: CustomerOrder$CustomerOrderBuilder` (a Lombok-generated nested class).
+Worse, the app kept serving **stale code**, which sent two debugging sessions down blind alleys.
+If behaviour does not match the source: stop the app, `./mvnw clean compile`, start again.
 
 ---
 

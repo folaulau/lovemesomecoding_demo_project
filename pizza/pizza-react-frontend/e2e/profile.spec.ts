@@ -10,11 +10,20 @@ import type { Page } from '@playwright/test';
 const API = 'http://localhost:8085';
 
 /**
- * react-bootstrap renders ListGroup.Item as a <div class="list-group-item"> in this layout, not an
- * <li>, so getByRole('listitem') matches nothing. Target the class instead.
+ * Rows inside the ADDRESSES card specifically.
+ *
+ * Two things to note. react-bootstrap renders ListGroup.Item as a <div class="list-group-item">
+ * here, not an <li>, so getByRole('listitem') matches nothing. And the payment-methods card uses
+ * the same list markup — including its own "primary" badge — so anything unscoped counts both.
  */
+function addressesCard(page: Page) {
+  return page
+    .getByRole('heading', { name: 'Delivery addresses' })
+    .locator('xpath=ancestor::div[contains(@class,"card-body")]');
+}
+
 function addressRow(page: Page) {
-  return page.locator('.list-group-item');
+  return addressesCard(page).locator('.list-group-item');
 }
 
 test.beforeAll(async ({ request }) => {
@@ -99,8 +108,9 @@ test('exactly one address is primary, and it can be changed', async ({ page }) =
   await expect(
     addressRow(page).filter({ hasText: 'Work' }).getByText('primary'),
   ).toBeVisible();
-  // exact:true matters — "primary" is also a substring of the "Make primary" button.
-  await expect(page.getByText('primary', { exact: true })).toHaveCount(1);
+  // exact:true matters — "primary" is also a substring of the "Make primary" button. Scoped to
+  // the addresses card, because a saved card carries its own (legitimate) primary badge.
+  await expect(addressesCard(page).getByText('primary', { exact: true })).toHaveCount(1);
 });
 
 test('an address can be added, edited and deleted', async ({ page }) => {

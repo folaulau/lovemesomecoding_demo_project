@@ -25,6 +25,8 @@ public record OrderDTO(
         BigDecimal tax,
         BigDecimal deliveryFee,
         BigDecimal total,
+        @Schema(description = "Card brand that paid, display only", example = "visa") String cardBrand,
+        @Schema(description = "Last four digits. NOT the card number.", example = "4242") String cardLast4,
         LocalDateTime createdAt,
         LocalDateTime updatedAt,
         List<OrderItemDTO> items) {}

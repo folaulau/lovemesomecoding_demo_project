@@ -25,7 +25,7 @@ import type { Address, OrderCreateRequest, OrderCreateResponse } from '../types'
  * <p>Note what is NOT sent in step 1: no prices. The server decides what the cart costs.
  */
 export function CheckoutPage() {
-  const { items, totals, orderType, clear } = useCart();
+  const { items, totals, orderType, setOrderType, clear } = useCart();
   const { user, isAuthenticated } = useAuth();
   const navigate = useNavigate();
 
@@ -250,6 +250,39 @@ export function CheckoutPage() {
                   to save this order to your account — entirely optional.
                 </Alert>
               )}
+
+              {/*
+                Delivery vs pickup, chosen here as well as in the cart drawer. It changes the
+                price (a delivery fee) and which fields are required, so making the customer go
+                back to the drawer to change their mind is needless friction.
+              */}
+              <Card className="mb-4 border-0 shadow-sm">
+                <Card.Body>
+                  <h2 className="h6 fw-bold text-uppercase text-muted mb-3">How would you like it?</h2>
+                  <div className="d-flex gap-2 flex-wrap">
+                    <Button
+                      type="button"
+                      variant={isDelivery ? 'primary' : 'outline-primary'}
+                      aria-pressed={isDelivery}
+                      onClick={() => setOrderType('DELIVERY')}
+                    >
+                      Delivery
+                      <span className="d-block small fw-normal">
+                        {formatMoney(3.99)} fee
+                      </span>
+                    </Button>
+                    <Button
+                      type="button"
+                      variant={!isDelivery ? 'primary' : 'outline-primary'}
+                      aria-pressed={!isDelivery}
+                      onClick={() => setOrderType('CARRYOUT')}
+                    >
+                      Pick up
+                      <span className="d-block small fw-normal">No fee</span>
+                    </Button>
+                  </div>
+                </Card.Body>
+              </Card>
 
               <Card className="mb-4 border-0 shadow-sm">
                 <Card.Body>
