@@ -1,5 +1,6 @@
 package com.pizza.api.entity.order;
 
+import com.pizza.api.config.PizzaProperties;
 import com.pizza.api.dto.OrderCreateDTO;
 import com.pizza.api.entity.crust.Crust;
 import com.pizza.api.entity.crust.CrustDAO;
@@ -17,7 +18,6 @@ import java.util.Map;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -45,11 +45,12 @@ public class PricingService {
     @Autowired
     private ToppingDAO toppingDAO;
 
-    @Value("${pizza.pricing.tax-rate}")
-    private BigDecimal taxRate;
-
-    @Value("${pizza.pricing.delivery-fee}")
-    private BigDecimal deliveryFee;
+    /**
+     * Both figures used to be two separate @Value fields here AND two more in CartServiceImpl —
+     * the same keys, written out four times. Bound once, they can no longer drift apart.
+     */
+    @Autowired
+    private PizzaProperties properties;
 
     /** A fully priced order, ready to persist. */
     public record PricedOrder(
@@ -127,8 +128,10 @@ public class PricingService {
         }
 
         subtotal = scale(subtotal);
-        BigDecimal fee = dto.orderType() == OrderType.DELIVERY ? scale(deliveryFee) : BigDecimal.ZERO;
-        BigDecimal tax = scale(subtotal.multiply(taxRate));
+        BigDecimal fee = dto.orderType() == OrderType.DELIVERY
+                ? scale(properties.pricing().deliveryFee())
+                : BigDecimal.ZERO;
+        BigDecimal tax = scale(subtotal.multiply(properties.pricing().taxRate()));
         BigDecimal total = scale(subtotal.add(tax).add(fee));
 
         log.debug("Priced {} lines: subtotal={} tax={} fee={} total={}", items.size(), subtotal, tax, fee, total);

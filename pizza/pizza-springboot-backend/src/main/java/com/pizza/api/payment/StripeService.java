@@ -1,10 +1,14 @@
 package com.pizza.api.payment;
 
+import com.pizza.api.config.PizzaProperties;
 import com.stripe.StripeClient;
+import com.stripe.exception.ApiConnectionException;
+import com.stripe.exception.RateLimitException;
 import com.stripe.exception.StripeException;
 import com.stripe.model.PaymentIntent;
 import com.stripe.model.PaymentMethod;
 import com.stripe.model.SetupIntent;
+import com.stripe.net.RequestOptions;
 import com.stripe.param.CustomerCreateParams;
 import com.stripe.param.PaymentIntentCreateParams;
 import com.stripe.param.PaymentMethodAttachParams;
@@ -14,9 +18,10 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.Map;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
+import org.springframework.resilience.annotation.Retryable;
 import org.springframework.stereotype.Service;
 
 /**
@@ -27,17 +32,18 @@ import org.springframework.stereotype.Service;
  * payment and nothing else.
  */
 @Service
+@RequiredArgsConstructor
 public class StripeService {
 
     private static final Logger log = LoggerFactory.getLogger(StripeService.class);
 
-    @Value("${pizza.stripe.secret-key}")
-    private String secretKey;
+    private final PizzaProperties properties;
 
     private StripeClient stripe;
 
     @PostConstruct
     void init() {
+        String secretKey = properties.stripe().secretKey();
         if (secretKey == null || secretKey.isBlank()) {
             log.warn("pizza.stripe.secret-key is not set — checkout will fail. Put a test key in "
                     + "application-local.properties and run with -Dspring-boot.run.profiles=local");
@@ -62,6 +68,13 @@ public class StripeService {
      * @param orderId our order's PUBLIC UUID, recorded as metadata so the webhook can trace it back
      * @return the PaymentIntent, whose id and clientSecret we need
      */
+    @Retryable(
+            includes = {ApiConnectionException.class, RateLimitException.class},
+            maxRetries = 3,
+            delay = 200,
+            multiplier = 2.0,
+            maxDelay = 2000,
+            jitter = 100)
     public PaymentIntent createPaymentIntent(BigDecimal amount, UUID orderId, String receiptEmail)
             throws StripeException {
         requireConfigured();
@@ -80,9 +93,31 @@ public class StripeService {
             params.setReceiptEmail(receiptEmail);
         }
 
-        return stripe.paymentIntents().create(params.build());
+        // THE reason this method is safe to retry. Without an idempotency key, a request that
+        // succeeded at Stripe but whose response was lost to a network blip would be retried and
+        // create a SECOND PaymentIntent — the classic double-charge. Keyed on our own order id,
+        // Stripe recognises the replay and returns the original PaymentIntent instead.
+        RequestOptions options =
+                RequestOptions.builder().setIdempotencyKey("order-" + orderId).build();
+
+        return stripe.paymentIntents().create(params.build(), options);
     }
 
+    /**
+     * A pure read, so it is idempotent by nature and needs no key to be safe to repeat.
+     *
+     * <p>Note which exceptions are listed. A dropped connection or a rate limit is worth trying
+     * again — the request may well succeed a moment later. An {@code InvalidRequestException} is
+     * not: the request was malformed, and sending it three more times just makes the same mistake
+     * three more times, slower. Retrying the wrong exception turns a fast failure into a slow one.
+     */
+    @Retryable(
+            includes = {ApiConnectionException.class, RateLimitException.class},
+            maxRetries = 3,
+            delay = 200,
+            multiplier = 2.0,
+            maxDelay = 2000,
+            jitter = 100)
     public PaymentIntent retrieve(String paymentIntentId) throws StripeException {
         requireConfigured();
         return stripe.paymentIntents().retrieve(paymentIntentId);

@@ -1,5 +1,6 @@
 package com.pizza.api.entity.cart;
 
+import com.pizza.api.config.PizzaProperties;
 import com.pizza.api.dto.CartDTO;
 import com.pizza.api.dto.CartItemDTO;
 import com.pizza.api.dto.CartWriteDTO;
@@ -22,7 +23,6 @@ import java.util.Map;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -52,11 +52,8 @@ public class CartServiceImpl implements CartService {
     @Autowired
     private UserDAO userDAO;
 
-    @Value("${pizza.pricing.tax-rate}")
-    private BigDecimal taxRate;
-
-    @Value("${pizza.pricing.delivery-fee}")
-    private BigDecimal deliveryFee;
+    @Autowired
+    private PizzaProperties properties;
 
     @Override
     @Transactional
@@ -222,9 +219,9 @@ public class CartServiceImpl implements CartService {
 
         subtotal = scale(subtotal);
         BigDecimal fee = cart.getOrderType() == OrderType.DELIVERY && subtotal.signum() > 0
-                ? scale(deliveryFee)
+                ? scale(properties.pricing().deliveryFee())
                 : BigDecimal.ZERO;
-        BigDecimal tax = scale(subtotal.multiply(taxRate));
+        BigDecimal tax = scale(subtotal.multiply(properties.pricing().taxRate()));
 
         return new CartDTO(
                 cart.getPublicId(),

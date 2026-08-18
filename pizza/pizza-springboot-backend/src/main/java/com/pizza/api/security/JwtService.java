@@ -1,5 +1,6 @@
 package com.pizza.api.security;
 
+import com.pizza.api.config.PizzaProperties;
 import com.pizza.api.entity.user.User;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.JwtException;
@@ -10,7 +11,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.Date;
 import javax.crypto.SecretKey;
-import org.springframework.beans.factory.annotation.Value;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 /**
@@ -25,22 +26,19 @@ import org.springframework.stereotype.Service;
  * token, which is deliberately out of scope here.
  */
 @Service
+@RequiredArgsConstructor
 public class JwtService {
 
     private static final String CLAIM_ROLE = "role";
     private static final String CLAIM_USER_ID = "uid";
 
-    @Value("${pizza.jwt.secret}")
-    private String secret;
-
-    @Value("${pizza.jwt.expiration-minutes}")
-    private long expirationMinutes;
+    private final PizzaProperties properties;
 
     private SecretKey key;
 
     @PostConstruct
     void init() {
-        byte[] keyBytes = secret.getBytes(StandardCharsets.UTF_8);
+        byte[] keyBytes = properties.jwt().secret().getBytes(StandardCharsets.UTF_8);
         // HS256 requires at least 256 bits. Failing loudly at startup beats discovering a weak
         // key in production.
         if (keyBytes.length < 32) {
@@ -52,7 +50,7 @@ public class JwtService {
 
     public String generateToken(User user) {
         Instant now = Instant.now();
-        Instant expiry = now.plusSeconds(expirationMinutes * 60);
+        Instant expiry = now.plusSeconds(properties.jwt().expirationMinutes() * 60);
 
         return Jwts.builder()
                 .subject(user.getEmail())
@@ -80,6 +78,6 @@ public class JwtService {
     }
 
     public long getExpirationMinutes() {
-        return expirationMinutes;
+        return properties.jwt().expirationMinutes();
     }
 }

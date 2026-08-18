@@ -8,6 +8,7 @@ import org.springframework.aop.interceptor.AsyncUncaughtExceptionHandler;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.task.TaskDecorator;
+import org.springframework.resilience.annotation.EnableResilientMethods;
 import org.springframework.scheduling.annotation.AsyncConfigurer;
 import org.springframework.scheduling.annotation.EnableAsync;
 import org.springframework.scheduling.annotation.EnableScheduling;
@@ -20,6 +21,10 @@ import org.springframework.scheduling.config.ScheduledTaskRegistrar;
 @Configuration
 @EnableAsync
 @EnableScheduling
+// Spring Framework 7 moved retry into the core container. @EnableResilientMethods activates
+// org.springframework.resilience.annotation.Retryable (and @ConcurrencyLimit), which is why this
+// project needs no spring-retry dependency and no @EnableRetry.
+@EnableResilientMethods
 public class ThreadPoolConfig implements AsyncConfigurer, SchedulingConfigurer {
 
     /*

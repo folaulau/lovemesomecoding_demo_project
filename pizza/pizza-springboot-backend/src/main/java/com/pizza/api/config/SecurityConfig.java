@@ -1,19 +1,21 @@
 package com.pizza.api.config;
 
 import com.pizza.api.security.JwtAuthenticationFilter;
-import java.util.Arrays;
+import com.pizza.api.security.oauth2.OAuth2LoginSuccessHandler;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
-import org.springframework.beans.factory.annotation.Value;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.config.Customizer;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.web.cors.CorsConfiguration;
@@ -31,13 +33,25 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
  */
 @Configuration
 @EnableWebSecurity
+// Turns on @PreAuthorize / @PostAuthorize. Defence in depth: the URL rules below guard the
+// HTTP entry points, and the annotations guard the service methods regardless of which entry
+// point reached them. A new controller that forgets its URL rule is still refused.
+@EnableMethodSecurity
 @RequiredArgsConstructor
 public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
+    private final PizzaProperties properties;
 
-    @Value("${pizza.cors.allowed-origins}")
-    private String allowedOrigins;
+    /**
+     * Both are present only under the {@code oauth2} profile — Boot builds no
+     * ClientRegistrationRepository unless {@code spring.security.oauth2.client.registration.*} is
+     * configured. ObjectProvider is what lets one filter chain cover both cases instead of needing
+     * two profile-specific SecurityConfig classes that then drift apart.
+     */
+    private final ObjectProvider<ClientRegistrationRepository> clientRegistrationRepository;
+
+    private final ObjectProvider<OAuth2LoginSuccessHandler> oauth2SuccessHandler;
 
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
@@ -54,6 +68,11 @@ public class SecurityConfig {
 
                         // ---- auth ----------------------------------------------------------
                         .requestMatchers("/api/auth/register", "/api/auth/login")
+                        .permitAll()
+                        // The OAuth2 handshake endpoints. /oauth2/authorization/** starts the flow
+                        // and /login/oauth2/code/** receives the provider's callback; both must be
+                        // reachable by an unauthenticated browser, which is the whole point.
+                        .requestMatchers("/oauth2/**", "/login/oauth2/**")
                         .permitAll()
                         .requestMatchers("/api/auth/me")
                         .authenticated()
@@ -73,6 +92,16 @@ public class SecurityConfig {
                         // ---- public menu ---------------------------------------------------
                         .requestMatchers(HttpMethod.GET, "/api/products/**", "/api/toppings/**", "/api/crusts/**")
                         .permitAll()
+
+                        // ---- search --------------------------------------------------------
+                        // Browsing the menu is public, and so is searching it. The reindex endpoint
+                        // below it is NOT — it falls through to /api/search/** ... which does not
+                        // exist, so it lands on anyRequest().authenticated(). Stated explicitly
+                        // instead, because "protected by accident" is not protected.
+                        .requestMatchers(HttpMethod.GET, "/api/search/products")
+                        .permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/search/reindex")
+                        .hasRole("ADMIN")
 
                         // ---- cart ----------------------------------------------------------
                         // Public, like guest checkout — you do not need an account to fill a
@@ -95,6 +124,13 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/orders/*", "/api/orders/*/payment-status")
                         .permitAll()
 
+                        // ---- server-rendered pages -----------------------------------------
+                        // Same reasoning as GET /api/orders/* above: a guest with the link must be
+                        // able to see and print their own receipt without an account. Same
+                        // limitation too — the id is the only secret.
+                        .requestMatchers(HttpMethod.GET, "/orders/*/receipt")
+                        .permitAll()
+
                         // ---- admin ---------------------------------------------------------
                         .requestMatchers("/api/admin/**")
                         .hasRole("ADMIN")
@@ -108,6 +144,14 @@ public class SecurityConfig {
                 // Runs before the username/password filter so a valid token authenticates the
                 // request before anything tries to challenge it.
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
+
+        // Enabled only when a provider is actually configured. Calling oauth2Login() without a
+        // ClientRegistrationRepository fails the context at startup, so this is not merely tidy —
+        // it is what keeps the default profile bootable.
+        if (clientRegistrationRepository.getIfAvailable() != null) {
+            OAuth2LoginSuccessHandler successHandler = oauth2SuccessHandler.getObject();
+            http.oauth2Login(oauth2 -> oauth2.successHandler(successHandler));
+        }
 
         return http.build();
     }
@@ -125,7 +169,9 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration config = new CorsConfiguration();
-        config.setAllowedOrigins(Arrays.asList(allowedOrigins.split(",")));
+        // Boot already split the comma-separated property into a List during binding,
+        // so there is no split() to get wrong here.
+        config.setAllowedOrigins(properties.cors().allowedOrigins());
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(List.of("*"));
         config.setAllowCredentials(true);

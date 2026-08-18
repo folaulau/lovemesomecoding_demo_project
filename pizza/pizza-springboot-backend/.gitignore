@@ -37,3 +37,6 @@ src/main/resources/application-local.properties
 src/main/resources/application-*.local.properties
 .env
 .env.local
+
+# Uploaded product images (see pizza.storage.upload-dir)
+uploads/

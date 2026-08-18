@@ -4,6 +4,7 @@ import com.pizza.api.dto.ProductCreateDTO;
 import com.pizza.api.dto.ProductDTO;
 import java.util.List;
 import java.util.UUID;
+import org.springframework.web.multipart.MultipartFile;
 
 public interface ProductService {
 
@@ -19,6 +20,9 @@ public interface ProductService {
     ProductDTO createProduct(ProductCreateDTO dto);
 
     ProductDTO updateProduct(UUID id, ProductCreateDTO dto);
+
+    /** Stores the upload and points the product's imageUrl at it. */
+    ProductDTO setProductImage(UUID id, MultipartFile file);
 
     /** Soft delete: old orders still reference the product, so the row must survive. */
     void deactivateProduct(UUID id);

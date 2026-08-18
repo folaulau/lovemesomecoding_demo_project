@@ -14,6 +14,7 @@ import com.stripe.model.PaymentMethod;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -37,6 +38,9 @@ public class CustomerOrderServiceImpl implements CustomerOrderService {
 
     @Autowired
     private StripeService stripeService;
+
+    @Autowired
+    private ApplicationEventPublisher events;
 
     @Override
     @Transactional
@@ -95,6 +99,11 @@ public class CustomerOrderServiceImpl implements CustomerOrderService {
         } else {
             log.warn("Stripe is not configured — order {} created without a PaymentIntent", saved.getPublicId());
         }
+
+        // Announce it and stop caring who acts on it. Listeners registered for AFTER_COMMIT
+        // will not run until this @Transactional method actually commits, which is the point:
+        // nobody gets emailed about an order that is about to be rolled back.
+        events.publishEvent(OrderPlacedEvent.from(saved));
 
         return new OrderCreateResponseDTO(toDtoWithItems(saved.getPublicId()), clientSecret);
     }

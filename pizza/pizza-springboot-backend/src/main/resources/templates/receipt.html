@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<!--
+  The printable order receipt.
+
+  Rendered two different ways from this one file:
+    - OrderReceiptController returns the view name "receipt", and Spring MVC resolves it here.
+    - MailService calls templateEngine.process("receipt", context) to produce an email body.
+  Same template, same model, two destinations - which is the argument for server-side rendering
+  that a JSON API cannot answer on its own.
+-->
+<html xmlns:th="http://www.thymeleaf.org" th:lang="en">
+  <head th:replace="~{fragments/layout :: head('Receipt · Order ' + ${order.id})}">
+    <title>Receipt</title>
+  </head>
+
+  <body>
+    <div class="sheet">
+      <div th:replace="~{fragments/layout :: brand}"></div>
+
+      <p class="muted">
+        <!-- `|...|` is a literal substitution block: inline ${} without breaking the string into
+             a chain of + concatenations. -->
+        <span th:text="|Order ${order.id}|">Order …</span><br />
+        <span th:text="${#temporals.format(order.createdAt, 'd MMM yyyy, HH:mm')}">date</span>
+      </p>
+
+      <!-- th:if renders the element only when the condition holds. Note it REMOVES the element
+           entirely rather than hiding it with CSS, so nothing sensitive ships in the markup. -->
+      <p th:if="${order.orderType.name() == 'DELIVERY'}">
+        <strong>Delivering to</strong><br />
+        <span th:text="${order.customerName}">name</span><br />
+        <span th:text="${order.addressLine1}">line 1</span><br />
+        <span th:if="${order.addressLine2}" th:text="${order.addressLine2}">line 2</span>
+        <span th:text="|${order.city}, ${order.state} ${order.postalCode}|">city</span>
+      </p>
+      <p th:unless="${order.orderType.name() == 'DELIVERY'}">
+        <strong>Collection</strong><br />
+        <span th:text="${order.customerName}">name</span> — ready for pickup
+      </p>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Item</th>
+            <th class="num">Qty</th>
+            <th class="num">Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          <!-- th:each is the loop. The optional second variable is the iteration status - .index,
+               .count, .first, .last, .odd/.even - which is how you stripe rows or special-case the
+               last one without tracking a counter yourself. -->
+          <tr th:each="item : ${order.items}">
+            <td>
+              <span th:text="${item.productName}">Product</span>
+              <span th:if="${item.size}" th:text="|(${item.size})|">(LARGE)</span>
+              <div th:if="${item.crustName}" class="toppings" th:text="|Crust: ${item.crustName}|">Crust</div>
+              <!-- #strings and #lists are Thymeleaf's expression utility objects. listJoin here
+                   saves building the string in the controller, which would put presentation
+                   concerns in the wrong layer. -->
+              <div th:if="${not #lists.isEmpty(item.toppings)}" class="toppings"
+                   th:text="'Toppings: ' + ${#strings.listJoin(item.toppings.![toppingName], ', ')}">
+                Toppings
+              </div>
+            </td>
+            <td class="num" th:text="${item.quantity}">1</td>
+            <td class="num" th:text="'$' + ${#numbers.formatDecimal(item.lineTotal, 1, 2)}">$0.00</td>
+          </tr>
+        </tbody>
+        <tfoot>
+          <tr>
+            <td colspan="2">Subtotal</td>
+            <td class="num" th:text="'$' + ${#numbers.formatDecimal(order.subtotal, 1, 2)}">$0.00</td>
+          </tr>
+          <tr>
+            <td colspan="2">Tax</td>
+            <td class="num" th:text="'$' + ${#numbers.formatDecimal(order.tax, 1, 2)}">$0.00</td>
+          </tr>
+          <tr th:if="${order.deliveryFee != null and order.deliveryFee.signum() > 0}">
+            <td colspan="2">Delivery</td>
+            <td class="num" th:text="'$' + ${#numbers.formatDecimal(order.deliveryFee, 1, 2)}">$0.00</td>
+          </tr>
+          <tr>
+            <td colspan="2">Total</td>
+            <td class="num" th:text="'$' + ${#numbers.formatDecimal(order.total, 1, 2)}">$0.00</td>
+          </tr>
+        </tfoot>
+      </table>
+
+      <p th:if="${order.cardLast4}" class="muted">
+        Paid with <span th:text="${order.cardBrand}">visa</span>
+        ending <span th:text="${order.cardLast4}">4242</span>
+      </p>
+
+      <p class="no-print">
+        <button type="button" onclick="window.print()">Print this receipt</button>
+      </p>
+
+      <div th:replace="~{fragments/layout :: footer}"></div>
+    </div>
+  </body>
+</html>

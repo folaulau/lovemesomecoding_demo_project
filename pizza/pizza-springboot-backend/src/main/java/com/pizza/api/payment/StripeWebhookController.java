@@ -1,5 +1,6 @@
 package com.pizza.api.payment;
 
+import com.pizza.api.config.PizzaProperties;
 import com.pizza.api.entity.order.CustomerOrderService;
 import com.stripe.exception.SignatureVerificationException;
 import com.stripe.model.Event;
@@ -10,7 +11,6 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -37,8 +37,7 @@ public class StripeWebhookController {
 
     private final CustomerOrderService orderService;
 
-    @Value("${pizza.stripe.webhook-secret}")
-    private String webhookSecret;
+    private final PizzaProperties properties;
 
     /**
      * The raw body is required, not a parsed object: the signature is computed over the exact
@@ -50,6 +49,7 @@ public class StripeWebhookController {
             @RequestBody String payload,
             @RequestHeader(value = "Stripe-Signature", required = false) String signature) {
 
+        String webhookSecret = properties.stripe().webhookSecret();
         if (webhookSecret == null || webhookSecret.isBlank()) {
             log.warn("Received a webhook but pizza.stripe.webhook-secret is not set — ignoring");
             return ResponseEntity.ok("ignored");

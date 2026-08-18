@@ -7,9 +7,22 @@ import java.util.List;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+/**
+ * User administration.
+ *
+ * <p>Every method here carries {@code @PreAuthorize("hasRole('ADMIN')")} even though
+ * {@code SecurityConfig} already restricts {@code /api/admin/**} to admins. That is not
+ * belt-and-braces for its own sake: URL rules protect one entry point, and this service is a bean
+ * that any future controller, scheduled job or message listener can inject. The annotation travels
+ * with the method, so the guard cannot be left behind when the caller changes.
+ *
+ * <p>⚠️ Being proxy-based, it has the same blind spot as {@code @Transactional} and
+ * {@code @Cacheable}: a call from another method inside THIS class skips the check entirely.
+ */
 @Service
 @Slf4j
 public class AdminUserServiceImpl implements AdminUserService {
@@ -34,12 +47,14 @@ public class AdminUserServiceImpl implements AdminUserService {
      * the database instead.
      */
     @Override
+    @PreAuthorize("hasRole('ADMIN')")
     @Transactional(readOnly = true)
     public List<AdminUserDTO> getAllUsers() {
         return userDAO.findAllForAdmin();
     }
 
     @Override
+    @PreAuthorize("hasRole('ADMIN')")
     @Transactional
     public AdminUserDTO changeRole(String actingAdminEmail, UUID userId, UserRole role) {
         User target = requireUser(userId);
@@ -51,6 +66,7 @@ public class AdminUserServiceImpl implements AdminUserService {
     }
 
     @Override
+    @PreAuthorize("hasRole('ADMIN')")
     @Transactional
     public void deleteUser(String actingAdminEmail, UUID userId) {
         User target = requireUser(userId);

@@ -38,6 +38,32 @@
 			<artifactId>spring-boot-starter-validation</artifactId>
 		</dependency>
 
+		<!-- ==================== aop / retry / cache ==================== -->
+		<!-- Brings in AspectJ weaving. Required by @Aspect, and ALSO by @Cacheable,
+		     @Transactional and @PreAuthorize - every one of them is implemented as a
+		     proxy, which is why a self-invocation bypasses them all.
+
+		     NOTE THE ARTIFACT NAME. Spring Boot 3 called this spring-boot-starter-aop.
+		     Boot 4 renamed it to spring-boot-starter-aspectj, and the old name is not
+		     in the BOM at all - so a Boot 3 pom fails with "version is missing" rather
+		     than with anything that mentions the rename. -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-aspectj</artifactId>
+		</dependency>
+
+		<!-- Spring Boot 4 modularized autoconfiguration: depending on the cache
+		     abstraction alone gives you the annotations with NO CacheManager, and
+		     @Cacheable then silently does nothing. Same trap as liquibase-core below. -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-cache</artifactId>
+		</dependency>
+
+		<!-- No spring-retry dependency on purpose: Spring Framework 7 ships retry in
+		     the core container (org.springframework.resilience.annotation.Retryable
+		     plus @EnableResilientMethods), so the separate library is now legacy. -->
+
 		<!-- ==================== persistence ==================== -->
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
@@ -87,11 +113,63 @@
 			<scope>runtime</scope>
 		</dependency>
 
+		<!-- ==================== oauth2 ==================== -->
+		<!-- Sign in with Google. Boot only builds a ClientRegistrationRepository when
+		     spring.security.oauth2.client.registration.* is present, which it is not by
+		     default - so SecurityConfig checks for that bean and only then enables
+		     oauth2Login(). See application-oauth2.properties. -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-oauth2-client</artifactId>
+		</dependency>
+
 		<!-- ==================== payments ==================== -->
 		<dependency>
 			<groupId>com.stripe</groupId>
 			<artifactId>stripe-java</artifactId>
 			<version>${stripe.version}</version>
+		</dependency>
+
+		<!-- ==================== server-side views ==================== -->
+		<!-- Renders the printable order receipt, and (see MailService) the HTML email
+		     body - the same template engine serving a browser and an inbox. -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-thymeleaf</artifactId>
+		</dependency>
+
+		<!-- ==================== search ==================== -->
+		<!-- Menu search. Repository scanning is switched OFF by default
+		     (spring.data.elasticsearch.repositories.enabled=false) and the beans are
+		     @Profile("search"), so no ES node is needed for a normal run. Start one with:
+		       docker run -p 9200:9200 -e discovery.type=single-node \
+		         -e xpack.security.enabled=false \
+		         docker.elastic.co/elasticsearch/elasticsearch:9.1.0
+		     then run with -Dspring-boot.run.profiles=local,search -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-data-elasticsearch</artifactId>
+		</dependency>
+
+		<!-- ==================== messaging ==================== -->
+		<!-- JMS over ActiveMQ Artemis. The @JmsListener container is @Profile("messaging")
+		     so that WITHOUT that profile no connection is ever attempted and the app still
+		     starts with nothing but MySQL running. Start a broker with:
+		       docker run -p 61616:61616 -e AMQ_USER=admin -e AMQ_PASSWORD=admin \
+		         apache/activemq-artemis:latest-alpine
+		     then run with -Dspring-boot.run.profiles=local,messaging -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-artemis</artifactId>
+		</dependency>
+
+		<!-- ==================== mail ==================== -->
+		<!-- Adding this starter alone changes nothing at runtime: Boot's mail
+		     autoconfiguration only builds a JavaMailSender when spring.mail.host is set,
+		     which it is not by default. See MailService for how that is handled. -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-mail</artifactId>
 		</dependency>
 
 		<!-- ==================== docs ==================== -->

@@ -1,16 +1,22 @@
 package com.pizza.api.entity.product;
 
+import com.pizza.api.config.CacheConfig;
 import com.pizza.api.dto.EntityDTOMapper;
 import com.pizza.api.dto.ProductCreateDTO;
 import com.pizza.api.dto.ProductDTO;
 import com.pizza.api.exception.ApiException;
+import com.pizza.api.storage.ProductImageStorageService;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
+import org.springframework.cache.annotation.Caching;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
 @Service
 @Slf4j
@@ -22,11 +28,15 @@ public class ProductServiceImpl implements ProductService {
     @Autowired
     private EntityDTOMapper mapper;
 
+    @Autowired
+    private ProductImageStorageService imageStorage;
+
     /**
      * {@code readOnly = true} lets Hibernate skip dirty checking and tells the driver this will not
      * write — cheaper, and it makes an accidental write fail loudly.
      */
     @Override
+    @Cacheable(value = CacheConfig.MENU_CACHE, keyGenerator = "methodAwareKeyGenerator")
     @Transactional(readOnly = true)
     public List<ProductDTO> getMenu() {
         log.debug("Getting the active menu");
@@ -34,6 +44,7 @@ public class ProductServiceImpl implements ProductService {
     }
 
     @Override
+    @Cacheable(value = CacheConfig.MENU_BY_TYPE_CACHE, key = "#type")
     @Transactional(readOnly = true)
     public List<ProductDTO> getByType(ProductType type) {
         log.debug("Getting active products of type {}", type);
@@ -56,6 +67,11 @@ public class ProductServiceImpl implements ProductService {
     }
 
     @Override
+    @Caching(
+            evict = {
+                @CacheEvict(value = CacheConfig.MENU_CACHE, allEntries = true),
+                @CacheEvict(value = CacheConfig.MENU_BY_TYPE_CACHE, allEntries = true)
+            })
     @Transactional
     public ProductDTO createProduct(ProductCreateDTO dto) {
         log.info("Creating product {}", dto.name());
@@ -73,6 +89,11 @@ public class ProductServiceImpl implements ProductService {
     }
 
     @Override
+    @Caching(
+            evict = {
+                @CacheEvict(value = CacheConfig.MENU_CACHE, allEntries = true),
+                @CacheEvict(value = CacheConfig.MENU_BY_TYPE_CACHE, allEntries = true)
+            })
     @Transactional
     public ProductDTO updateProduct(UUID id, ProductCreateDTO dto) {
         log.info("Updating product {}", id);
@@ -96,7 +117,41 @@ public class ProductServiceImpl implements ProductService {
         return mapper.mapProductToProductDTO(productDAO.save(product));
     }
 
+    /**
+     * Stores an uploaded image and points the product at it.
+     *
+     * <p>Note the ordering: the file is written BEFORE the row is updated. Do it the other way
+     * round and a storage failure leaves the database pointing at an image that does not exist.
+     * This way the worst case is an orphaned file, which is a cleanup job rather than a broken
+     * menu.
+     *
+     * <p>The eviction matters as much as the write. Without it the menu cache keeps serving the
+     * old image URL and the admin reasonably concludes the upload silently failed.
+     */
     @Override
+    @Caching(
+            evict = {
+                @CacheEvict(value = CacheConfig.MENU_CACHE, allEntries = true),
+                @CacheEvict(value = CacheConfig.MENU_BY_TYPE_CACHE, allEntries = true)
+            })
+    @Transactional
+    public ProductDTO setProductImage(UUID id, MultipartFile file) {
+        Product product =
+                productDAO.findByPublicIdWithSizes(id).orElseThrow(() -> ApiException.notFound("Product", id));
+
+        String storedName = imageStorage.store(file);
+        product.setImageUrl(imageStorage.urlFor(storedName));
+
+        log.info("Product {} image set to {}", id, product.getImageUrl());
+        return mapper.mapProductToProductDTO(productDAO.save(product));
+    }
+
+    @Override
+    @Caching(
+            evict = {
+                @CacheEvict(value = CacheConfig.MENU_CACHE, allEntries = true),
+                @CacheEvict(value = CacheConfig.MENU_BY_TYPE_CACHE, allEntries = true)
+            })
     @Transactional
     public void deactivateProduct(UUID id) {
         log.info("Deactivating product {}", id);
@@ -106,6 +161,11 @@ public class ProductServiceImpl implements ProductService {
     }
 
     @Override
+    @Caching(
+            evict = {
+                @CacheEvict(value = CacheConfig.MENU_CACHE, allEntries = true),
+                @CacheEvict(value = CacheConfig.MENU_BY_TYPE_CACHE, allEntries = true)
+            })
     @Transactional
     public void deleteProduct(UUID id) {
         log.info("Soft-deleting product {}", id);
