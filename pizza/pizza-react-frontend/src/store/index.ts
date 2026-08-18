@@ -1,6 +1,9 @@
 import { configureStore } from '@reduxjs/toolkit';
 import { useDispatch, useSelector } from 'react-redux';
+import { catalogReducer } from './catalogSlice';
 import { ordersReducer } from './ordersSlice';
+import { reportsReducer } from './reportsSlice';
+import { usersReducer } from './usersSlice';
 
 /* ==========================================================================
  * REDUX CONCEPT: the store — and why it exists in THIS app at all
@@ -20,7 +23,10 @@ import { ordersReducer } from './ordersSlice';
 
 export const store = configureStore({
   reducer: {
+    catalog: catalogReducer,
     orders: ordersReducer,
+    reports: reportsReducer,
+    users: usersReducer,
   },
   /*
    * configureStore already wires in redux-thunk, the Redux DevTools connection, and — in

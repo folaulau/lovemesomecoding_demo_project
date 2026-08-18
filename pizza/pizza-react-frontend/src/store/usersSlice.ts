@@ -1,5 +1,6 @@
 import { createAsyncThunk, createSlice } from '@reduxjs/toolkit';
 import { adminApi } from '../lib/adminApi';
+import { toApiFailure } from './apiFailure';
 import type { AdminUser, UUID } from '../types';
 
 /* ==========================================================================
@@ -22,10 +23,6 @@ interface UsersState {
 
 const initialState: UsersState = { items: [], loading: false, error: null };
 
-function messageOf(err: unknown, fallback: string): string {
-  return err instanceof Error ? err.message : fallback;
-}
-
 export const fetchUsers = createAsyncThunk('users/fetch', async () => adminApi.listUsers());
 
 export const changeUserRole = createAsyncThunk(
@@ -34,7 +31,7 @@ export const changeUserRole = createAsyncThunk(
     try {
       return await adminApi.changeUserRole(id, role);
     } catch (err) {
-      return rejectWithValue(messageOf(err, 'Could not change that role'));
+      return rejectWithValue(toApiFailure(err, 'Could not change that role'));
     }
   },
 );
@@ -46,7 +43,7 @@ export const deleteUser = createAsyncThunk(
       await adminApi.deleteUser(id);
       return id;
     } catch (err) {
-      return rejectWithValue(messageOf(err, 'Could not delete that user'));
+      return rejectWithValue(toApiFailure(err, 'Could not delete that user'));
     }
   },
 );

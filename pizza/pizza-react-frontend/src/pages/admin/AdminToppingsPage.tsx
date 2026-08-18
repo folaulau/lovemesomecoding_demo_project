@@ -1,10 +1,18 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Alert, Badge, Button, Card, Col, Form, Modal, Row, Spinner, Table } from 'react-bootstrap';
-import { ApiError } from '../../lib/api';
-import { adminApi } from '../../lib/adminApi';
 import { formatMoney } from '../../lib/money';
 import { useMenu } from '../../context/MenuContext';
 import { useToast } from '../../context/ToastContext';
+import { useAppDispatch, useAppSelector } from '../../store';
+import { failureMessage, type ApiFailure } from '../../store/apiFailure';
+import {
+  deleteTopping,
+  fetchToppings,
+  saveTopping,
+  selectCatalogError,
+  selectCatalogLoading,
+  selectToppings,
+} from '../../store/catalogSlice';
 import type { Topping, ToppingCategory, ToppingWriteRequest } from '../../types';
 
 const CATEGORIES: ToppingCategory[] = ['MEAT', 'VEGGIE', 'CHEESE'];
@@ -12,9 +20,19 @@ const CATEGORIES: ToppingCategory[] = ['MEAT', 'VEGGIE', 'CHEESE'];
 const empty: ToppingWriteRequest = { name: '', price: 1, category: 'MEAT', active: true };
 
 export default function AdminToppingsPage() {
-  const [toppings, setToppings] = useState<Topping[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  /*
+   * The topping LIST is store state — shared, refetched, mutated from two places.
+   *
+   * Everything below it (which row is open, what is typed into the form, which field is invalid)
+   * stays in useState on purpose. It is scratch state belonging to one component, it dies with the
+   * modal, and no other screen can meaningfully read it. Putting form keystrokes in a global store
+   * is the classic way to make Redux miserable — the rule is "shared state goes in the store", not
+   * "all state goes in the store".
+   */
+  const dispatch = useAppDispatch();
+  const toppings = useAppSelector(selectToppings);
+  const loading = useAppSelector(selectCatalogLoading);
+  const error = useAppSelector(selectCatalogError);
 
   const [editing, setEditing] = useState<Topping | 'new' | null>(null);
   const [form, setForm] = useState<ToppingWriteRequest>(empty);
@@ -25,21 +43,9 @@ export default function AdminToppingsPage() {
   const { showToast } = useToast();
   const { reload: reloadMenu } = useMenu();
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      setToppings(await adminApi.listToppings());
-      setError(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not load toppings.');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
   useEffect(() => {
-    void load();
-  }, [load]);
+    void dispatch(fetchToppings());
+  }, [dispatch]);
 
   async function handleSave(event: React.FormEvent) {
     event.preventDefault();
@@ -47,29 +53,23 @@ export default function AdminToppingsPage() {
     setFieldErrors({});
     setFormError(null);
     try {
-      if (editing === 'new') {
-        await adminApi.createTopping(form);
-        showToast(`${form.name} created`);
-      } else if (editing) {
-        await adminApi.updateTopping(editing.id, form);
-        showToast(`${form.name} updated`);
-      }
+      const id = editing === 'new' ? undefined : editing?.id;
+      await dispatch(saveTopping({ id, body: form })).unwrap();
+      showToast(`${form.name} ${id ? 'updated' : 'created'}`);
       setEditing(null);
-      await load();
+      // The public menu is Context, not Redux, so it has to be told the catalogue moved.
       reloadMenu();
     } catch (err) {
-      if (err instanceof ApiError) {
-        setFieldErrors(err.fieldErrors());
-        setFormError(err.message);
-      } else {
-        setFormError('Could not save.');
-      }
+      // unwrap() re-throws the ApiFailure the thunk rejected with — the field errors survived the
+      // trip through Redux precisely because they were flattened into a plain object first.
+      setFieldErrors((err as ApiFailure)?.fieldErrors ?? {});
+      setFormError(failureMessage(err, 'Could not save.'));
     } finally {
       setSaving(false);
     }
   }
 
-  if (loading) {
+  if (loading && toppings.length === 0) {
     return (
       <div className="text-center py-5">
         <Spinner animation="border" variant="danger" role="status">
@@ -147,10 +147,13 @@ export default function AdminToppingsPage() {
                       size="sm"
                       variant="outline-danger"
                       onClick={async () => {
-                        await adminApi.deleteTopping(topping.id);
-                        showToast(`${topping.name} deleted`, 'danger');
-                        await load();
-                        reloadMenu();
+                        try {
+                          await dispatch(deleteTopping(topping.id)).unwrap();
+                          showToast(`${topping.name} deleted`, 'danger');
+                          reloadMenu();
+                        } catch (err) {
+                          showToast(failureMessage(err, 'Could not delete that topping'), 'danger');
+                        }
                       }}
                     >
                       Delete

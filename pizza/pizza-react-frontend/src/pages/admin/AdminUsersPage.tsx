@@ -1,56 +1,66 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { Alert, Badge, Button, Card, Form, Spinner, Table } from 'react-bootstrap';
-import { ApiError } from '../../lib/api';
-import { adminApi } from '../../lib/adminApi';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
+import { useAppDispatch, useAppSelector } from '../../store';
+import { failureMessage } from '../../store/apiFailure';
+import {
+  changeUserRole,
+  deleteUser,
+  fetchUsers,
+  selectUsers,
+  selectUsersError,
+  selectUsersLoading,
+} from '../../store/usersSlice';
 import type { AdminUser } from '../../types';
 
+/**
+ * The users tab.
+ *
+ * Note the deliberate MIX: the user list is Redux (admin data, shared, mutated), while `useAuth`
+ * and `useToast` stay on Context. Signed-in identity and toasts belong to the whole app, customer
+ * pages included, so moving them into an admin-only store would put them out of reach of every
+ * screen that also needs them. "Redux for admin" is about admin DATA, not about banning Context.
+ */
 export default function AdminUsersPage() {
-  const [users, setUsers] = useState<AdminUser[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const dispatch = useAppDispatch();
+  const users = useAppSelector(selectUsers);
+  const loading = useAppSelector(selectUsersLoading);
+  const error = useAppSelector(selectUsersError);
 
   const { user: currentUser } = useAuth();
   const { showToast } = useToast();
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      setUsers(await adminApi.listUsers());
-      setError(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not load users.');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
   useEffect(() => {
-    void load();
-  }, [load]);
+    void dispatch(fetchUsers());
+  }, [dispatch]);
 
   async function changeRole(target: AdminUser, role: 'CUSTOMER' | 'ADMIN') {
     try {
-      await adminApi.changeUserRole(target.id, role);
+      await dispatch(changeUserRole({ id: target.id, role })).unwrap();
       showToast(`${target.email} is now ${role.toLowerCase()}`);
-      await load();
     } catch (err) {
-      showToast(err instanceof ApiError ? err.message : 'Could not change that role', 'danger');
+      // The server's own explanation, shown verbatim — refusals here are deliberate
+      // ("you cannot demote yourself") and the reason is the useful part.
+      showToast(failureMessage(err, 'Could not change that role'), 'danger');
     }
   }
 
   async function remove(target: AdminUser) {
     try {
-      await adminApi.deleteUser(target.id);
+      await dispatch(deleteUser(target.id)).unwrap();
       showToast(`${target.email} deleted`, 'danger');
-      await load();
     } catch (err) {
-      showToast(err instanceof ApiError ? err.message : 'Could not delete that user', 'danger');
+      showToast(failureMessage(err, 'Could not delete that user'), 'danger');
     }
   }
 
-  if (loading) {
+  /*
+   * `loading && none yet` rather than plain `loading`. Store state starts empty and the flag only
+   * flips once the thunk dispatches, so keying purely off `loading` would flash an empty table for
+   * a frame. It also means a REFRESH updates in place instead of replacing the list with a spinner.
+   */
+  if (loading && users.length === 0) {
     return (
       <div className="text-center py-5">
         <Spinner animation="border" variant="danger" role="status">

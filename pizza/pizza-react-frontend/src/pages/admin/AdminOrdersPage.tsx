@@ -1,8 +1,14 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { Alert, Badge, Button, Card, Form, Spinner, Table } from 'react-bootstrap';
-import { adminApi } from '../../lib/adminApi';
 import { formatMoney } from '../../lib/money';
 import { useToast } from '../../context/ToastContext';
+import { useAppDispatch, useAppSelector } from '../../store';
+import {
+  changeOrderStatus,
+  fetchOrders,
+  pageChanged,
+  selectOrdersState,
+} from '../../store/ordersSlice';
 import type { Order, OrderStatus } from '../../types';
 
 const STATUSES: OrderStatus[] = [
@@ -22,36 +28,31 @@ const STATUS_VARIANT: Record<OrderStatus, string> = {
 };
 
 export default function AdminOrdersPage() {
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [page, setPage] = useState(0);
-  const [totalPages, setTotalPages] = useState(1);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const { showToast } = useToast();
 
-  const load = useCallback(async (pageIndex: number) => {
-    setLoading(true);
-    try {
-      const result = await adminApi.listOrders(pageIndex, 20);
-      setOrders(result.content);
-      setTotalPages(result.totalPages);
-      setError(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not load orders.');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  /*
+   * REDUX CONCEPT: useSelector subscribes; useDispatch does not.
+   *
+   * This component re-renders when the slice it selects changes, and NOT when an unrelated slice
+   * does. Compare the six useState calls this replaced — the same state, but scattered across the
+   * component and gone the moment it unmounted.
+   */
+  const dispatch = useAppDispatch();
+  const { items: orders, page, totalPages, loading, error } = useAppSelector(selectOrdersState);
 
   useEffect(() => {
-    void load(page);
-  }, [load, page]);
+    void dispatch(fetchOrders(page));
+  }, [dispatch, page]);
 
   async function changeStatus(order: Order, status: OrderStatus) {
+    /*
+     * `unwrap()` re-throws the thunk's rejection so this can be written as a normal try/catch.
+     * Without it, dispatch RESOLVES even for a rejected thunk — it hands back the action object —
+     * and the catch below would never run, silently reporting failures as successes.
+     */
     try {
-      await adminApi.updateOrderStatus(order.id, status);
+      await dispatch(changeOrderStatus({ id: order.id, status })).unwrap();
       showToast(`Order moved to ${status.replace('_', ' ').toLowerCase()}`);
-      await load(page);
     } catch (err) {
       showToast(err instanceof Error ? err.message : 'Could not update the order', 'danger');
     }
@@ -131,7 +132,7 @@ export default function AdminOrdersPage() {
             size="sm"
             variant="outline-secondary"
             disabled={page === 0}
-            onClick={() => setPage((p) => p - 1)}
+            onClick={() => dispatch(pageChanged(page - 1))}
           >
             Previous
           </Button>
@@ -142,7 +143,7 @@ export default function AdminOrdersPage() {
             size="sm"
             variant="outline-secondary"
             disabled={page >= totalPages - 1}
-            onClick={() => setPage((p) => p + 1)}
+            onClick={() => dispatch(pageChanged(page + 1))}
           >
             Next
           </Button>

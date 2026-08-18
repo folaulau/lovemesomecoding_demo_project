@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { Alert, ButtonGroup, Card, Col, Container, Row, Spinner, Table } from 'react-bootstrap';
 import {
   Bar,
@@ -11,9 +11,16 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
-import { adminApi } from '../../lib/adminApi';
 import { formatMoney } from '../../lib/money';
-import type { ReportDashboard } from '../../types';
+import { useAppDispatch, useAppSelector } from '../../store';
+import {
+  fetchDashboard,
+  rangeChanged,
+  selectCurrentReport,
+  selectDays,
+  selectReportsError,
+  selectReportsLoading,
+} from '../../store/reportsSlice';
 
 const RANGES = [7, 30, 90] as const;
 
@@ -60,34 +67,24 @@ function VizTooltip({
 }
 
 export default function AdminReportsPage() {
-  const [days, setDays] = useState<number>(30);
-  const [report, setReport] = useState<ReportDashboard | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const dispatch = useAppDispatch();
+  const days = useAppSelector(selectDays);
+  const report = useAppSelector(selectCurrentReport);
+  const loading = useAppSelector(selectReportsLoading);
+  const error = useAppSelector(selectReportsError);
 
+  /*
+   * The whole `let cancelled = false` dance this replaced existed to stop a slow response for the
+   * OLD range from overwriting a newer one. The slice files each response under the range it was
+   * requested for (action.meta.arg), so a late arrival lands in the right slot and is simply not
+   * the one being displayed. Out-of-order responses stop being a race and become a non-event.
+   *
+   * Refetching on every visit even when cached is deliberate: the tab shows what is already known
+   * immediately, then quietly corrects it. Instant AND current, rather than one or the other.
+   */
   useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-
-    adminApi
-      .dashboard(days)
-      .then((data) => {
-        if (!cancelled) {
-          setReport(data);
-          setError(null);
-        }
-      })
-      .catch((err: unknown) => {
-        if (!cancelled) setError(err instanceof Error ? err.message : 'Could not load reports.');
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [days]);
+    void dispatch(fetchDashboard(days));
+  }, [dispatch, days]);
 
   if (loading && !report) {
     return (
@@ -99,7 +96,9 @@ export default function AdminReportsPage() {
     );
   }
 
-  if (error) return <Alert variant="danger">{error}</Alert>;
+  // Only surrender the screen to an error if there is nothing cached to show. A failed background
+  // refresh should not wipe out a report the admin is already reading.
+  if (error && !report) return <Alert variant="danger">{error}</Alert>;
   if (!report) return null;
 
   const { summary, revenueByDay, topProducts, statusBreakdown } = report;
@@ -129,7 +128,7 @@ export default function AdminReportsPage() {
               type="button"
               className={`btn btn-outline-primary${days === range ? ' active' : ''}`}
               aria-pressed={days === range}
-              onClick={() => setDays(range)}
+              onClick={() => dispatch(rangeChanged(range))}
             >
               {range} days
             </button>

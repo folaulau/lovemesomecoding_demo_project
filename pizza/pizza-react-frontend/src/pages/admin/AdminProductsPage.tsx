@@ -1,10 +1,19 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Alert, Badge, Button, Card, Col, Form, Modal, Row, Spinner, Table } from 'react-bootstrap';
-import { ApiError } from '../../lib/api';
-import { adminApi } from '../../lib/adminApi';
 import { formatMoney } from '../../lib/money';
 import { useMenu } from '../../context/MenuContext';
 import { useToast } from '../../context/ToastContext';
+import { useAppDispatch, useAppSelector } from '../../store';
+import { failureMessage, type ApiFailure } from '../../store/apiFailure';
+import {
+  deactivateProduct,
+  deleteProduct,
+  fetchProducts,
+  saveProduct,
+  selectCatalogError,
+  selectCatalogLoading,
+  selectProducts,
+} from '../../store/catalogSlice';
 import type { Product, ProductType, ProductWriteRequest, SizeName } from '../../types';
 
 const SIZES: SizeName[] = ['SMALL', 'MEDIUM', 'LARGE'];
@@ -39,9 +48,11 @@ function toForm(product: Product): ProductWriteRequest {
 }
 
 export default function AdminProductsPage() {
-  const [products, setProducts] = useState<Product[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  // Store for the list; useState for the modal and its form. See AdminToppingsPage for why.
+  const dispatch = useAppDispatch();
+  const products = useAppSelector(selectProducts);
+  const loading = useAppSelector(selectCatalogLoading);
+  const error = useAppSelector(selectCatalogError);
 
   // null = modal closed. An id = editing; 'new' = creating.
   const [editing, setEditing] = useState<Product | 'new' | null>(null);
@@ -54,21 +65,9 @@ export default function AdminProductsPage() {
   // The public menu is cached in context; refresh it whenever the catalogue changes.
   const { reload: reloadMenu } = useMenu();
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      setProducts(await adminApi.listProducts());
-      setError(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not load products.');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
   useEffect(() => {
-    void load();
-  }, [load]);
+    void dispatch(fetchProducts());
+  }, [dispatch]);
 
   function openCreate() {
     setForm(emptyForm());
@@ -91,45 +90,43 @@ export default function AdminProductsPage() {
     setFormError(null);
 
     try {
-      if (editing === 'new') {
-        await adminApi.createProduct(form);
-        showToast(`${form.name} created`);
-      } else if (editing) {
-        await adminApi.updateProduct(editing.id, form);
-        showToast(`${form.name} updated`);
-      }
+      const id = editing === 'new' ? undefined : editing?.id;
+      await dispatch(saveProduct({ id, body: form })).unwrap();
+      showToast(`${form.name} ${id ? 'updated' : 'created'}`);
       setEditing(null);
-      await load();
       reloadMenu();
     } catch (err) {
-      if (err instanceof ApiError) {
-        // The API returns field-level failures; surface them next to the inputs rather than
-        // dumping one generic message.
-        setFieldErrors(err.fieldErrors());
-        setFormError(err.message);
-      } else {
-        setFormError('Could not save. Is the API running?');
-      }
+      // The API returns field-level failures; surface them next to the inputs rather than dumping
+      // one generic message. They survive the trip through Redux because toApiFailure flattened
+      // the ApiError into a plain object before it ever reached an action.
+      setFieldErrors((err as ApiFailure)?.fieldErrors ?? {});
+      setFormError(failureMessage(err, 'Could not save. Is the API running?'));
     } finally {
       setSaving(false);
     }
   }
 
   async function handleDeactivate(product: Product) {
-    await adminApi.deactivateProduct(product.id);
-    showToast(`${product.name} hidden from the menu`, 'info');
-    await load();
-    reloadMenu();
+    try {
+      await dispatch(deactivateProduct(product.id)).unwrap();
+      showToast(`${product.name} hidden from the menu`, 'info');
+      reloadMenu();
+    } catch (err) {
+      showToast(failureMessage(err, 'Could not deactivate that product'), 'danger');
+    }
   }
 
   async function handleDelete(product: Product) {
-    await adminApi.deleteProduct(product.id);
-    showToast(`${product.name} deleted`, 'danger');
-    await load();
-    reloadMenu();
+    try {
+      await dispatch(deleteProduct(product.id)).unwrap();
+      showToast(`${product.name} deleted`, 'danger');
+      reloadMenu();
+    } catch (err) {
+      showToast(failureMessage(err, 'Could not delete that product'), 'danger');
+    }
   }
 
-  if (loading) {
+  if (loading && products.length === 0) {
     return (
       <div className="text-center py-5">
         <Spinner animation="border" variant="danger" role="status">

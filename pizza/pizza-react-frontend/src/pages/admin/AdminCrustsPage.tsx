@@ -1,18 +1,28 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Alert, Badge, Button, Card, Col, Form, Modal, Row, Spinner, Table } from 'react-bootstrap';
-import { ApiError } from '../../lib/api';
-import { adminApi } from '../../lib/adminApi';
 import { formatMoney } from '../../lib/money';
 import { useMenu } from '../../context/MenuContext';
 import { useToast } from '../../context/ToastContext';
+import { useAppDispatch, useAppSelector } from '../../store';
+import { failureMessage, type ApiFailure } from '../../store/apiFailure';
+import {
+  deleteCrust,
+  fetchCrusts,
+  saveCrust,
+  selectCatalogError,
+  selectCatalogLoading,
+  selectCrusts,
+} from '../../store/catalogSlice';
 import type { Crust, CrustWriteRequest } from '../../types';
 
 const empty: CrustWriteRequest = { name: '', priceDelta: 0, active: true, displayOrder: 0 };
 
 export default function AdminCrustsPage() {
-  const [crusts, setCrusts] = useState<Crust[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  // Store for the list; useState for the modal and its form. See AdminToppingsPage for why.
+  const dispatch = useAppDispatch();
+  const crusts = useAppSelector(selectCrusts);
+  const loading = useAppSelector(selectCatalogLoading);
+  const error = useAppSelector(selectCatalogError);
 
   const [editing, setEditing] = useState<Crust | 'new' | null>(null);
   const [form, setForm] = useState<CrustWriteRequest>(empty);
@@ -23,21 +33,9 @@ export default function AdminCrustsPage() {
   const { showToast } = useToast();
   const { reload: reloadMenu } = useMenu();
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      setCrusts(await adminApi.listCrusts());
-      setError(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not load crusts.');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
   useEffect(() => {
-    void load();
-  }, [load]);
+    void dispatch(fetchCrusts());
+  }, [dispatch]);
 
   async function handleSave(event: React.FormEvent) {
     event.preventDefault();
@@ -45,29 +43,20 @@ export default function AdminCrustsPage() {
     setFieldErrors({});
     setFormError(null);
     try {
-      if (editing === 'new') {
-        await adminApi.createCrust(form);
-        showToast(`${form.name} created`);
-      } else if (editing) {
-        await adminApi.updateCrust(editing.id, form);
-        showToast(`${form.name} updated`);
-      }
+      const id = editing === 'new' ? undefined : editing?.id;
+      await dispatch(saveCrust({ id, body: form })).unwrap();
+      showToast(`${form.name} ${id ? 'updated' : 'created'}`);
       setEditing(null);
-      await load();
       reloadMenu();
     } catch (err) {
-      if (err instanceof ApiError) {
-        setFieldErrors(err.fieldErrors());
-        setFormError(err.message);
-      } else {
-        setFormError('Could not save.');
-      }
+      setFieldErrors((err as ApiFailure)?.fieldErrors ?? {});
+      setFormError(failureMessage(err, 'Could not save.'));
     } finally {
       setSaving(false);
     }
   }
 
-  if (loading) {
+  if (loading && crusts.length === 0) {
     return (
       <div className="text-center py-5">
         <Spinner animation="border" variant="danger" role="status">
@@ -145,10 +134,13 @@ export default function AdminCrustsPage() {
                       size="sm"
                       variant="outline-danger"
                       onClick={async () => {
-                        await adminApi.deleteCrust(crust.id);
-                        showToast(`${crust.name} deleted`, 'danger');
-                        await load();
-                        reloadMenu();
+                        try {
+                          await dispatch(deleteCrust(crust.id)).unwrap();
+                          showToast(`${crust.name} deleted`, 'danger');
+                          reloadMenu();
+                        } catch (err) {
+                          showToast(failureMessage(err, 'Could not delete that crust'), 'danger');
+                        }
                       }}
                     >
                       Delete
