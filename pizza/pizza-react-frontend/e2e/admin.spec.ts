@@ -225,10 +225,20 @@ test('a deactivated product disappears from the public menu', async ({ page, req
   let menu = await (await request.get(`${API}/api/products`)).json();
   expect(menu.some((p: { name: string }) => p.name === name)).toBe(true);
 
+  // Wait for the PATCH itself, then for the table to reload. Inferring completion from the badge
+  // alone raced the request, and the public-menu check below then ran too early.
+  const deactivated = page.waitForResponse(
+    (r) => r.url().includes('/deactivate') && r.request().method() === 'PATCH' && r.ok(),
+  );
+  const reloaded = page.waitForResponse(
+    (r) => r.url().includes('/api/admin/products') && r.request().method() === 'GET' && r.ok(),
+  );
   await page.getByRole('row').filter({ hasText: name }).getByRole('button', { name: 'Hide' }).click();
-  await expect(
-    page.getByRole('row').filter({ hasText: name }).getByText('hidden'),
-  ).toBeVisible();
+  await deactivated;
+  await reloaded;
+  // Assert on the row's text rather than a nested locator: the badge is re-rendered by the
+  // reload, so a locator resolved against the old row can go stale mid-assertion.
+  await expect(page.getByRole('row').filter({ hasText: name })).toContainText('hidden');
 
   // …and gone once hidden, while still listed for the admin.
   menu = await (await request.get(`${API}/api/products`)).json();

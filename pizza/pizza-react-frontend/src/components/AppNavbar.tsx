@@ -52,6 +52,9 @@ export function AppNavbar({ onOpenCart }: { onOpenCart: () => void }) {
                 id="account-menu"
                 align="end"
               >
+                <NavDropdown.Item as={Link} to="/profile">
+                  Profile
+                </NavDropdown.Item>
                 <NavDropdown.Item as={Link} to="/orders">
                   My orders
                 </NavDropdown.Item>

@@ -278,3 +278,45 @@ export interface CartWriteRequest {
     quantity: number;
   }>;
 }
+
+// ---------------------------------------------------------------- profile
+
+export interface Address {
+  id: UUID;
+  label: string | null;
+  recipientName: string | null;
+  phone: string | null;
+  line1: string;
+  line2: string | null;
+  city: string;
+  state: string;
+  postalCode: string;
+  primary: boolean;
+}
+
+export interface AddressWriteRequest {
+  label?: string;
+  recipientName?: string;
+  phone?: string;
+  line1: string;
+  line2?: string;
+  city: string;
+  state: string;
+  postalCode: string;
+  primary?: boolean;
+}
+
+/**
+ * A saved card as the UI sees it.
+ *
+ * Display metadata only — no card number, no CVC, and not even the Stripe token: the browser has
+ * no use for it, since only the server can charge with it.
+ */
+export interface PaymentMethod {
+  id: UUID;
+  brand: string | null;
+  last4: string | null;
+  expMonth: number | null;
+  expYear: number | null;
+  primary: boolean;
+}

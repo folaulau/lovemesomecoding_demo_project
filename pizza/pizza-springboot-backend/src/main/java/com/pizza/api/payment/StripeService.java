@@ -3,7 +3,12 @@ package com.pizza.api.payment;
 import com.stripe.StripeClient;
 import com.stripe.exception.StripeException;
 import com.stripe.model.PaymentIntent;
+import com.stripe.model.PaymentMethod;
+import com.stripe.model.SetupIntent;
+import com.stripe.param.CustomerCreateParams;
 import com.stripe.param.PaymentIntentCreateParams;
+import com.stripe.param.PaymentMethodAttachParams;
+import com.stripe.param.SetupIntentCreateParams;
 import jakarta.annotation.PostConstruct;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -81,6 +86,66 @@ public class StripeService {
     public PaymentIntent retrieve(String paymentIntentId) throws StripeException {
         requireConfigured();
         return stripe.paymentIntents().retrieve(paymentIntentId);
+    }
+
+    /**
+     * Finds or creates the Stripe Customer a user's saved cards hang off.
+     *
+     * <p>Saved payment methods must be attached to a Customer; without one, a PaymentMethod is
+     * single-use and cannot be charged again later.
+     */
+    public String ensureCustomer(String existingCustomerId, String email, String name) throws StripeException {
+        requireConfigured();
+        if (existingCustomerId != null && !existingCustomerId.isBlank()) {
+            return existingCustomerId;
+        }
+
+        CustomerCreateParams.Builder params = CustomerCreateParams.builder();
+        if (email != null && !email.isBlank()) {
+            params.setEmail(email);
+        }
+        if (name != null && !name.isBlank()) {
+            params.setName(name);
+        }
+        return stripe.customers().create(params.build()).getId();
+    }
+
+    /**
+     * A SetupIntent lets the browser collect and store a card WITHOUT charging it.
+     *
+     * <p>This is the right primitive for "save a card for later": a PaymentIntent would take money
+     * now, and collecting card details ourselves to store them would be both unnecessary and a
+     * PCI problem.
+     */
+    public SetupIntent createSetupIntent(String customerId) throws StripeException {
+        requireConfigured();
+        return stripe.setupIntents()
+                .create(SetupIntentCreateParams.builder()
+                        .setCustomer(customerId)
+                        .addPaymentMethodType("card")
+                        .build());
+    }
+
+    /** Attaches a collected PaymentMethod to the customer so it can be reused. */
+    public PaymentMethod attachPaymentMethod(String paymentMethodId, String customerId) throws StripeException {
+        requireConfigured();
+        return stripe.paymentMethods()
+                .attach(
+                        paymentMethodId,
+                        PaymentMethodAttachParams.builder()
+                                .setCustomer(customerId)
+                                .build());
+    }
+
+    public PaymentMethod retrievePaymentMethod(String paymentMethodId) throws StripeException {
+        requireConfigured();
+        return stripe.paymentMethods().retrieve(paymentMethodId);
+    }
+
+    /** Detaches a saved card so it can no longer be charged. */
+    public void detachPaymentMethod(String paymentMethodId) throws StripeException {
+        requireConfigured();
+        stripe.paymentMethods().detach(paymentMethodId);
     }
 
     /** 12.34 -> 1234. Scaling first avoids any floating-point surprise on the boundary. */

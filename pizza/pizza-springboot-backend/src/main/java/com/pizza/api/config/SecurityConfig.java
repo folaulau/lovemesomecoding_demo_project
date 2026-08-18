@@ -58,6 +58,12 @@ public class SecurityConfig {
                         .requestMatchers("/api/auth/me")
                         .authenticated()
 
+                        // ---- the caller's own profile --------------------------------------
+                        // /api/me/** always means "the signed-in caller", so there is no id in
+                        // the path that could be swapped for someone else's.
+                        .requestMatchers("/api/me/**")
+                        .authenticated()
+
                         // ---- Stripe callbacks ----------------------------------------------
                         // Stripe cannot present a JWT. This endpoint is protected instead by
                         // verifying the Stripe-Signature header — see StripeWebhookController.

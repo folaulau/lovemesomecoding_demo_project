@@ -20,4 +20,6 @@ public interface DatabaseTableNames {
     String CART = "cart";
     String CART_ITEM = "cart_item";
     String CART_ITEM_TOPPING = "cart_item_topping";
+    String USER_ADDRESS = "user_address";
+    String USER_PAYMENT_METHOD = "user_payment_method";
 }

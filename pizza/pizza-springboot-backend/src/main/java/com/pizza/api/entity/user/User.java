@@ -7,11 +7,15 @@ import jakarta.persistence.*;
 import java.io.Serial;
 import java.io.Serializable;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
+import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
+import lombok.ToString;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.DynamicUpdate;
 import org.hibernate.annotations.JdbcTypeCode;
@@ -68,6 +72,37 @@ public class User implements Serializable {
     @Enumerated(EnumType.STRING)
     @Column(name = "role", nullable = false, length = 20)
     private UserRole role = UserRole.CUSTOMER;
+
+    /** Set the first time a card is saved. Payment methods attach to a Stripe Customer. */
+    @Column(name = "stripe_customer_id", length = 120)
+    private String stripeCustomerId;
+
+    /**
+     * Saved delivery addresses. Excluded from equals/toString for the usual @Data-and-JPA reason:
+     * walking the collection would force a lazy load and recurse back through the child's user.
+     */
+    @ToString.Exclude
+    @EqualsAndHashCode.Exclude
+    @Builder.Default
+    @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    private List<UserAddress> addresses = new ArrayList<>();
+
+    /** Saved cards — tokens only. See UserPaymentMethod. */
+    @ToString.Exclude
+    @EqualsAndHashCode.Exclude
+    @Builder.Default
+    @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    private List<UserPaymentMethod> paymentMethods = new ArrayList<>();
+
+    public void addAddress(UserAddress address) {
+        addresses.add(address);
+        address.setUser(this);
+    }
+
+    public void addPaymentMethod(UserPaymentMethod method) {
+        paymentMethods.add(method);
+        method.setUser(this);
+    }
 
     @Builder.Default
     @Column(name = "deleted", nullable = false)

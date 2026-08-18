@@ -3,8 +3,8 @@
 Shared context for the pizza demo (React + Angular frontends, Spring Boot backend).
 Read this first when resuming work.
 
-**Status:** Phases 0–5 complete. Full admin CRUD and a charted reports dashboard are live.
-**55 backend tests + 23 Playwright tests, all green.**
+**Status:** Phases 0–6 complete, plus server-side carts, customer profiles (addresses + saved
+cards) and a checkout address chooser. **55 backend tests + 81 Playwright tests, all green.**
 **Last updated:** 2026-08-17
 
 **Run the backend:** `cd pizza-springboot-backend && ./mvnw spring-boot:run` → http://localhost:8085
@@ -637,6 +637,87 @@ failure cannot poison the next run.
 
 ---
 
+## Phase 6 — UI test sweep (DONE)
+
+Every flow is now driven through the browser. **81 Playwright tests**, split by concern:
+
+| Spec | Covers |
+|---|---|
+| `browse.spec.ts` | home, CTAs, menu tabs, navbar filters, builder pricing, drink-vs-pizza steps |
+| `cart.spec.ts` | badge, toast portal, line merging, quantities, totals, **persistence** |
+| `auth.spec.ts` | sign in/out, registration, session restore, route guards, admin visibility |
+| `checkout.spec.ts` | empty cart, validation, carryout, guest vs signed-in, server pricing |
+| `orders-and-misc.spec.ts` | history, confirmation, 404s, footer, API-down recovery |
+| `profile.spec.ts` | addresses CRUD, primary switching, saved cards, checkout chooser |
+| `admin.spec.ts` | reports, product/topping/crust CRUD, order status, deactivation |
+| `api-guards.spec.ts` | the two guarantees not observable through the UI |
+| `payment.spec.ts` | order → Stripe charge → PAID (skips without `STRIPE_SECRET_KEY`) |
+
+### ⚠️ A test that was passing for the wrong reason
+`getByRole('link', { name: 'Pizzas' })` had been clicking the **navbar**, not the menu tab —
+react-bootstrap renders `Nav.Link` as an anchor with `role="button"`, and the navbar happens to
+contain real links with the same labels. The menu tabs had never been exercised. Both are now
+covered, and the tab locator is scoped to `.nav-tabs`.
+
+Other locator traps worth knowing, all hit for real here: `"Pepsi"` matches `"Diet Pepsi"`;
+`"Total"` matches `"Subtotal"`; `"primary"` matches `"Make primary"`. Use `exact: true`.
+
+---
+
+## Server-side carts (DONE)
+
+**This reverses the Phase 2 decision** that the cart lives only in the browser. Refreshing a page
+no longer loses the basket.
+
+- `cart` / `cart_item` / `cart_item_topping` (changeset 007). Only the cart's **UUID** is kept in
+  localStorage; the contents live in the database.
+- **The cart stores identifiers, never prices.** Every figure is recomputed from the current
+  catalogue on each read, by the same rules the checkout uses — so one source of pricing truth, and
+  a cart left overnight picks up today's menu instead of quietly honouring yesterday's. (Contrast
+  `order_item`, which *does* snapshot prices: an order is a record of what someone actually paid.)
+- `PUT /api/carts/{id}` replaces the whole cart — idempotent, and far simpler to reason about than
+  a stream of deltas that can arrive out of order.
+- `CartContext` hydrates on mount and persists on change (debounced 300 ms). It never writes before
+  hydrating, which would overwrite the saved cart with an empty one.
+- Public, like guest checkout: the unguessable UUID is the credential.
+
+Covered by tests for refresh, second tab, quantity changes, delivery/carryout, emptying, and a
+stale cart id being discarded rather than breaking the page.
+
+---
+
+## Customer profile — addresses and payment methods (DONE)
+
+New `/profile` page (linked from the account menu), plus `/api/me/**`.
+
+### Addresses
+Multiple per user, exactly one **primary**. Checkout shows a chooser preselected to the primary,
+with "Use a different address" revealing the manual fields. Guests see no chooser at all.
+
+The "exactly one primary" invariant is enforced in the service — MySQL cannot express "at most one
+true per user" as a constraint. Deleting the primary promotes the next survivor, so a customer can
+never end up with saved addresses and nothing selected.
+
+### ⚠️ Payment methods — what is deliberately NOT stored
+**No card number, no CVC, no cardholder name.** Storing a PAN drags the app into PCI-DSS scope and
+is unnecessary. What is stored:
+
+- `stripe_payment_method_id` — an opaque `pm_…` token, useless without our secret key
+- `brand` / `last4` / expiry — **display metadata Stripe itself returns**, so a customer can
+  recognise "Visa ending 4242"
+
+Cards are collected by Stripe Elements against a **SetupIntent** (store without charging) and never
+pass through this API. Deleting a card also detaches it at Stripe — otherwise the row would vanish
+while the card stayed chargeable.
+
+`/api/me/**` takes no user id: the owner comes from the verified token, which removes a whole class
+of "read someone else's data" bug by construction. An address belonging to another account returns
+**404, not 403** — a 403 would confirm the id is real.
+
+---
+
 ## Open questions
 
-- None blocking. Next is Phase 6 (QA sweep, coverage) and Phase 7 (Angular against the same API).
+- Phase 7 (Angular against the same API) is the only planned work left.
+- Saved cards are stored and manageable, but **checkout does not yet offer them** — it always
+  collects a card. Wiring "pay with a saved card" is the natural next step.

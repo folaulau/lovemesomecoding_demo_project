@@ -1,4 +1,4 @@
-import { useId, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import { Alert, Button, Card, Col, Container, Form, Row, Spinner } from 'react-bootstrap';
 import { useNavigate } from 'react-router-dom';
 import { Elements } from '@stripe/react-stripe-js';
@@ -8,7 +8,8 @@ import { ApiError, api } from '../lib/api';
 import { stripePromise } from '../lib/stripe';
 import { formatMoney, lineTotal } from '../lib/money';
 import { StripePaymentForm } from '../components/StripePaymentForm';
-import type { OrderCreateRequest, OrderCreateResponse } from '../types';
+import { profileApi } from '../lib/profileApi';
+import type { Address, OrderCreateRequest, OrderCreateResponse } from '../types';
 
 /**
  * Checkout, in two steps.
@@ -36,6 +37,17 @@ export function CheckoutPage() {
   // Set once the order exists server-side; its presence is what advances us to step 2.
   const [created, setCreated] = useState<OrderCreateResponse | null>(null);
 
+  /*
+   * Saved addresses, for signed-in customers.
+   *
+   * `NEW` is a sentinel meaning "type a fresh address instead of using a saved one". Modelling it
+   * as one selection value rather than a separate boolean keeps the radio group honest: exactly
+   * one option is selected at any time.
+   */
+  const NEW_ADDRESS = 'NEW';
+  const [addresses, setAddresses] = useState<Address[]>([]);
+  const [selectedAddressId, setSelectedAddressId] = useState<string>(NEW_ADDRESS);
+
   const [form, setForm] = useState({
     customerName: user?.fullName ?? '',
     email: user?.email ?? '',
@@ -47,10 +59,67 @@ export function CheckoutPage() {
   });
 
   const isDelivery = orderType === 'DELIVERY';
+  // Only ask for typed address fields when there is no saved address selected.
+  const usingNewAddress = selectedAddressId === NEW_ADDRESS;
+
+  /*
+   * Load the customer's saved addresses and preselect their PRIMARY one.
+   *
+   * Guests skip this entirely — they have no account, so there is nothing to load.
+   */
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
+    let cancelled = false;
+    profileApi
+      .listAddresses()
+      .then((saved) => {
+        if (cancelled) return;
+        setAddresses(saved);
+
+        const primary = saved.find((a) => a.primary) ?? saved[0];
+        if (primary) {
+          setSelectedAddressId(primary.id);
+          setForm((current) => ({
+            ...current,
+            phone: current.phone || (primary.phone ?? ''),
+          }));
+        }
+      })
+      .catch(() => {
+        // A profile that will not load must not block checkout — fall back to typing an address.
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated]);
 
   function updateField(field: keyof typeof form, value: string) {
     // Functional update: safe even if several updates are batched together.
     setForm((current) => ({ ...current, [field]: value }));
+  }
+
+  /** The address fields to send: from the chosen saved address, or from the form. */
+  function addressFields() {
+    if (!usingNewAddress) {
+      const chosen = addresses.find((a) => a.id === selectedAddressId);
+      if (chosen) {
+        return {
+          addressLine1: chosen.line1,
+          addressLine2: chosen.line2 ?? undefined,
+          city: chosen.city,
+          state: chosen.state,
+          postalCode: chosen.postalCode,
+        };
+      }
+    }
+    return {
+      addressLine1: form.addressLine1,
+      city: form.city,
+      state: form.state,
+      postalCode: form.postalCode,
+    };
   }
 
   async function handleCreateOrder(event: React.FormEvent<HTMLFormElement>) {
@@ -73,10 +142,8 @@ export function CheckoutPage() {
       // Ignored by the server when a token is present — the account's email wins.
       guestEmail: form.email,
       phone: form.phone || undefined,
-      addressLine1: isDelivery ? form.addressLine1 : undefined,
-      city: isDelivery ? form.city : undefined,
-      state: isDelivery ? form.state : undefined,
-      postalCode: isDelivery ? form.postalCode : undefined,
+      // A saved address wins when one is selected; otherwise use what was typed.
+      ...(isDelivery ? addressFields() : {}),
       items: items.map((item) => ({
         productId: item.productId,
         size: item.size,
@@ -234,6 +301,44 @@ export function CheckoutPage() {
                 <Card className="mb-4 border-0 shadow-sm">
                   <Card.Body>
                     <h2 className="h6 fw-bold text-uppercase text-muted mb-3">Delivery address</h2>
+
+                    {/* Saved addresses, primary preselected. Guests never see this. */}
+                    {addresses.length > 0 && (
+                      <div className="mb-3">
+                        {addresses.map((address) => (
+                          <Form.Check
+                            key={address.id}
+                            type="radio"
+                            name="savedAddress"
+                            id={`address-${address.id}`}
+                            checked={selectedAddressId === address.id}
+                            onChange={() => setSelectedAddressId(address.id)}
+                            label={
+                              <span>
+                                <span className="fw-semibold">{address.label || 'Address'}</span>
+                                {address.primary && (
+                                  <span className="badge bg-success ms-2">primary</span>
+                                )}
+                                <span className="d-block text-muted small">
+                                  {address.line1}, {address.city}, {address.state}{' '}
+                                  {address.postalCode}
+                                </span>
+                              </span>
+                            }
+                          />
+                        ))}
+                        <Form.Check
+                          type="radio"
+                          name="savedAddress"
+                          id="address-new"
+                          checked={usingNewAddress}
+                          onChange={() => setSelectedAddressId(NEW_ADDRESS)}
+                          label="Use a different address"
+                        />
+                      </div>
+                    )}
+
+                    {usingNewAddress && (
                     <Row className="g-3">
                       <Col xs={12}>
                         <Form.Label htmlFor={`${formId}-address`}>Street address</Form.Label>
@@ -283,6 +388,7 @@ export function CheckoutPage() {
                         </Form.Control.Feedback>
                       </Col>
                     </Row>
+                    )}
                   </Card.Body>
                 </Card>
               )}
