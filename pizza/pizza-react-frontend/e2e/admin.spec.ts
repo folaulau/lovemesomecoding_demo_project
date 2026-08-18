@@ -225,17 +225,20 @@ test('a deactivated product disappears from the public menu', async ({ page, req
   let menu = await (await request.get(`${API}/api/products`)).json();
   expect(menu.some((p: { name: string }) => p.name === name)).toBe(true);
 
-  // Wait for the PATCH itself, then for the table to reload. Inferring completion from the badge
-  // alone raced the request, and the public-menu check below then ran too early.
+  /*
+   * Wait for the PATCH itself. Inferring completion from the badge alone raced the request, and the
+   * public-menu check below then ran too early.
+   *
+   * This used to ALSO wait for a follow-up GET of /api/admin/products. There is no longer one to
+   * wait for: the catalog slice patches the deactivated row in the store instead of refetching the
+   * whole list, so the badge flips without a second round trip. The PATCH completing is what makes
+   * the public-menu assertion below safe, and that is still awaited.
+   */
   const deactivated = page.waitForResponse(
     (r) => r.url().includes('/deactivate') && r.request().method() === 'PATCH' && r.ok(),
   );
-  const reloaded = page.waitForResponse(
-    (r) => r.url().includes('/api/admin/products') && r.request().method() === 'GET' && r.ok(),
-  );
   await page.getByRole('row').filter({ hasText: name }).getByRole('button', { name: 'Hide' }).click();
   await deactivated;
-  await reloaded;
   // Assert on the row's text rather than a nested locator: the badge is re-rendered by the
   // reload, so a locator resolved against the old row can go stale mid-assertion.
   await expect(page.getByRole('row').filter({ hasText: name })).toContainText('hidden');

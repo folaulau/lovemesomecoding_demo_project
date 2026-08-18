@@ -201,9 +201,8 @@ const catalogSlice = createSlice({
       /*
        * REDUX CONCEPT: matchers.
        *
-       * Rather than write pending/rejected cases for all nine thunks, match them by suffix. Every
-       * thunk in this slice shares one loading flag and one error string, which is what the screens
-       * actually want. `addMatcher` must come after every `addCase`.
+       * Rather than write pending/rejected cases for all nine thunks, match them by suffix.
+       * `addMatcher` must come after every `addCase`.
        */
       .addMatcher(
         (action) => action.type.startsWith('catalog/') && action.type.endsWith('/pending'),
@@ -225,10 +224,21 @@ const catalogSlice = createSlice({
           action.type.startsWith('catalog/') && action.type.endsWith('/rejected'),
         (state, action) => {
           state.loading = false;
-          // rejectWithValue puts an ApiFailure on payload; an unexpected throw leaves a serialised
-          // Error on action.error instead, so both have to be handled.
-          const failure = action.payload as { message?: string } | undefined;
-          state.error = failure?.message ?? action.error?.message ?? 'Something went wrong.';
+
+          /*
+           * Only a failed FETCH becomes the page-level error.
+           *
+           * A failed save or delete is already reported where it happened — beside the offending
+           * input in the modal, or in a toast — and the component learns about it through
+           * `unwrap()`. Letting those also land here put the same "already exists" message in two
+           * places at once: under the form field AND in a banner at the top of the page behind the
+           * modal. Shared error state is convenient right up to the point where one failure has
+           * more than one right place to be shown.
+           */
+          if (action.type.startsWith('catalog/fetch')) {
+            const failure = action.payload as { message?: string } | undefined;
+            state.error = failure?.message ?? action.error?.message ?? 'Something went wrong.';
+          }
         },
       );
   },
