@@ -64,9 +64,9 @@ services:
     profiles: ["search", "all"]
     restart: unless-stopped
     ports:
-      # 9202, not 9200: another project already publishes an Elasticsearch on 9200.
-      # application-search.properties points here to match.
-      - "9202:9200"
+      # Elasticsearch's own default, on both sides. Unlike MySQL there is nothing else
+      # on this machine holding 9200.
+      - "9200:9200"
     environment:
       # One node, no cluster to form. Without this Elasticsearch waits for peers that
       # will never arrive and never turns green.
@@ -109,9 +109,15 @@ services:
       # declared here: Artemis auto-creates an address on first send.
       ANONYMOUS_LOGIN: "false"
     healthcheck:
-      test: ["CMD-SHELL", "curl -fs http://localhost:8161/console || exit 1"]
+      # ⚠️ Not a curl. This image has no curl in it, and a healthcheck that cannot run
+      # its own command reports `unhealthy` forever — which reads exactly like a broker
+      # that failed to start, while the broker is in fact serving fine. Artemis ships
+      # its own probe, and unlike an HTTP poke at the console it checks the messaging
+      # port, which is the thing Spring actually connects to.
+      test: ["CMD", "/var/lib/artemis-instance/bin/artemis", "check", "node", "--up",
+             "--user", "admin", "--password", "admin"]
       interval: 10s
-      timeout: 5s
+      timeout: 10s
       retries: 20
       start_period: 30s
     volumes:
