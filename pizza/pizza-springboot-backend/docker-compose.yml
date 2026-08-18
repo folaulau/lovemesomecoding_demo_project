@@ -1,0 +1,142 @@
+# Backing services for the pizza API.
+#
+# The app itself is NOT in here on purpose — you run it with `./mvnw spring-boot:run`
+# so a code change is a restart, not a rebuild. This file only provides the things the
+# app talks to over a socket.
+#
+# Only MySQL is required. Everything else sits behind a *compose profile* that mirrors
+# the Spring profile that needs it, so `docker compose up -d` starts one container and
+# a plain `./mvnw spring-boot:run` keeps working exactly as it does today.
+#
+#   docker compose up -d                          # MySQL only  -> profile: local
+#   docker compose --profile search up -d         # + Elasticsearch  -> local,search
+#   docker compose --profile messaging up -d      # + Artemis broker -> local,messaging
+#   docker compose --profile mail up -d           # + Mailpit SMTP sink
+#   docker compose --profile all up -d            # everything
+#   docker compose down                           # stop (data survives)
+#   docker compose down -v                        # stop AND wipe the databases
+#
+# ⚠️ Host ports are deliberately NOT the defaults, because this machine already has
+# something on the default. See each service.
+
+services:
+
+  # ---------------------------------------------------------------- MySQL (required)
+  mysql:
+    image: mysql:8.4
+    container_name: pizza-mysql
+    restart: unless-stopped
+    ports:
+      # 3308 on the host, 3306 inside the container. 3306 is taken by the MySQL
+      # already installed on this machine, and publishing to a busy port fails at
+      # `up` time with a bind error rather than anything about MySQL.
+      - "3308:3306"
+    environment:
+      # Matches what application.properties expects: root with an EMPTY password.
+      # Fine for a throwaway local container, and nothing you would ever do elsewhere —
+      # the image itself refuses to start without this explicit opt-in.
+      MYSQL_ALLOW_EMPTY_PASSWORD: "yes"
+      # Liquibase creates the tables, but not the schema that holds them. Without this
+      # the app fails at startup with "Unknown database 'pizza'".
+      MYSQL_DATABASE: pizza
+    command:
+      # utf8mb4 end to end. MySQL's older utf8 is a 3-byte encoding that cannot store
+      # an emoji, and a pizza menu is exactly the place someone will paste one.
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_0900_ai_ci
+    healthcheck:
+      # `docker compose up --wait` uses this. Without a healthcheck the container is
+      # "up" the instant the process starts, several seconds before MySQL accepts a
+      # connection — so the app races it and dies on a connection refused.
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+    volumes:
+      - mysql-data:/var/lib/mysql
+
+  # ---------------------------------------------------------------- Elasticsearch (profile: search)
+  # Only needed for `-Dspring-boot.run.profiles=local,search`. See ProductSearchServiceImpl.
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:9.1.0
+    container_name: pizza-elasticsearch
+    profiles: ["search", "all"]
+    restart: unless-stopped
+    ports:
+      # 9202, not 9200: another project already publishes an Elasticsearch on 9200.
+      # application-search.properties points here to match.
+      - "9202:9200"
+    environment:
+      # One node, no cluster to form. Without this Elasticsearch waits for peers that
+      # will never arrive and never turns green.
+      discovery.type: single-node
+      # No TLS, no passwords. That is only acceptable because this is a local demo node
+      # holding a menu; the moment it holds anything real, turn security back on.
+      xpack.security.enabled: "false"
+      # Cap the heap. Elasticsearch otherwise sizes it from the HOST's total RAM and
+      # will happily reserve several GB for a few dozen products.
+      ES_JAVA_OPTS: "-Xms512m -Xmx512m"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://localhost:9200/_cluster/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+    volumes:
+      - elasticsearch-data:/usr/share/elasticsearch/data
+
+  # ---------------------------------------------------------------- Artemis (profile: messaging)
+  # Only needed for `-Dspring-boot.run.profiles=local,messaging`. See MessagingConfig.
+  artemis:
+    image: apache/activemq-artemis:2.44.0-alpine
+    container_name: pizza-artemis
+    profiles: ["messaging", "all"]
+    restart: unless-stopped
+    ports:
+      - "61616:61616"   # the broker itself (Spring connects here)
+      - "8161:8161"     # the web console — http://localhost:8161/console, admin/admin
+    environment:
+      # ⚠️ The broker requires authentication, and Spring Boot connects ANONYMOUSLY
+      # unless told otherwise. Matching credentials live in
+      # application-messaging.properties; change one and you must change both, or the
+      # listener fails with a bare "AMQ229031: Unable to validate user".
+      ARTEMIS_USER: admin
+      ARTEMIS_PASSWORD: admin
+      # Keep the broker demanding a login. Flipping this to "true" would let any
+      # client in unauthenticated — convenient, and precisely the habit that makes an
+      # unsecured broker feel normal. pizza.orders and its DLQ do not need to be
+      # declared here: Artemis auto-creates an address on first send.
+      ANONYMOUS_LOGIN: "false"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://localhost:8161/console || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+    volumes:
+      - artemis-data:/var/lib/artemis-instance
+
+  # ---------------------------------------------------------------- Mailpit (profile: mail)
+  # An SMTP sink: it accepts every message and delivers none of them, then shows you
+  # what was "sent" at http://localhost:8025. Point a demo at a real relay once and the
+  # first typo'd test address becomes a bounce on somebody's real domain.
+  mailpit:
+    image: axllent/mailpit:v1.30.7
+    container_name: pizza-mailpit
+    profiles: ["mail", "all"]
+    restart: unless-stopped
+    ports:
+      - "1025:1025"     # SMTP  — spring.mail.port
+      - "8025:8025"     # the web UI that shows what was captured
+    environment:
+      MP_SMTP_AUTH_ACCEPT_ANY: "true"
+      MP_SMTP_AUTH_ALLOW_INSECURE: "true"
+
+# Named volumes, so `docker compose down` keeps the data and `down -v` throws it away.
+# A bind mount to a host directory would work too, but on macOS it is markedly slower —
+# the database file I/O crosses the VM boundary on every write.
+volumes:
+  mysql-data:
+  elasticsearch-data:
+  artemis-data:
