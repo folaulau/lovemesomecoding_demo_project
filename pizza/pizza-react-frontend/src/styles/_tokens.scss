@@ -1,0 +1,39 @@
+@use 'sass:color';
+
+/*
+ * Brand tokens, as SASS variables.
+ *
+ * These exist at BUILD time only — they are substituted into the output and then they are gone.
+ * That is what lets `color.adjust` below compute a shade instead of hard-coding one: Sass can do
+ * arithmetic on a colour, the browser cannot do it on a `var()`.
+ *
+ * The runtime half of the palette lives in theme.scss, which emits these same values as CSS
+ * custom properties. Bootstrap 5.3 reads its tokens from custom properties, and a component can
+ * override one for its own subtree — neither is possible with a Sass variable, because by the
+ * time the browser sees the file there is nothing left to override.
+ *
+ * Rule of thumb: Sass variable if only the build needs it, custom property if the browser does.
+ */
+
+$pizza-red: #d8102a;
+$pizza-black: #231f20;
+$pizza-cream: #fff8f0;
+
+// Derived, not typed out. Retune $pizza-red and the hover state follows.
+$pizza-red-dark: color.adjust($pizza-red, $lightness: -10%);
+
+$card-radius: 0.75rem;
+$transition-fast: 0.15s ease;
+
+/*
+ * Wrap a block so it only applies to visitors who have NOT asked the OS to reduce animation.
+ *
+ * `@content` is where the caller's declarations get injected. Without a mixin this media query
+ * would be repeated at the bottom of the file, far from the transition it disables — which is
+ * exactly how the two drift apart.
+ */
+@mixin motion-safe {
+  @media (prefers-reduced-motion: no-preference) {
+    @content;
+  }
+}

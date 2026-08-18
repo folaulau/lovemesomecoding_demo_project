@@ -4,7 +4,7 @@ import { BrowserRouter } from 'react-router-dom';
 
 // Bootstrap's stylesheet first, then our theme, so our overrides win on equal specificity.
 import 'bootstrap/dist/css/bootstrap.min.css';
-import './styles/theme.css';
+import './styles/theme.scss';
 
 import App from './App.tsx';
 import { CartProvider } from './context/CartContext';
