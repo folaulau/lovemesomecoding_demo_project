@@ -16,7 +16,7 @@
 - make sure to have a use case where it is using react context
 - use the react framework
 - use react major features and add comments so they are understood what they are used for.
-- implement pizza-angular-frontend and use tailwind css.
+- implement pizza-angular-frontend with tailwind css.
 
 ## Backend
 - use pizza-springboot-backend
@@ -35,6 +35,10 @@ sk_test_51U5Wc3BeMrxmFducTHj1nBq34oFWbVXEEdbMgY8YMufv5FoZitr84A42bbmgCNXfTUL0QS8
 - pattern backend like this project /Users/folaukaveinga/Github/trademachine, don't worry about the frontend directory in this directory.
 
 - add cart to the backend, when refreshing any page, cart content should be persisted in the backend.
+
+- for dao layer, create a JPA implementation, create a DAO interface and its implementation and wire in the custom JPA and JdbcTemplate. use jdbcTemplate for custom queries and repository for simple things like create, update, simple look ups. look at BalanceDAOImpl.java in the /Users/folaukaveinga/Github/trademachine as an example.
+
+- Service layer, create and interface and implementation.
 
 ## Test
 - Use playwright and test all flows through the UI.

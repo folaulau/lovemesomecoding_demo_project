@@ -26,5 +26,8 @@ public interface CustomerOrderDAO {
 
     List<CustomerOrder> findCreatedBetween(LocalDateTime from, LocalDateTime to);
 
+    /** How many orders one account has placed — shown beside them in the admin user list. */
+    long countByUserId(Long userId);
+
     CustomerOrder save(CustomerOrder order);
 }

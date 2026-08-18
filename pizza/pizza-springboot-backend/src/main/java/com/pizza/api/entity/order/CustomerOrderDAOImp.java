@@ -65,6 +65,11 @@ public class CustomerOrderDAOImp implements CustomerOrderDAO {
     }
 
     @Override
+    public long countByUserId(Long userId) {
+        return customerOrderRepository.countByUserId(userId);
+    }
+
+    @Override
     public CustomerOrder save(CustomerOrder order) {
         return customerOrderRepository.saveAndFlush(order);
     }

@@ -1,7 +1,7 @@
 package com.pizza.api.entity.user;
 
 import com.pizza.api.dto.AdminUserDTO;
-import com.pizza.api.entity.order.CustomerOrderRepository;
+import com.pizza.api.entity.order.CustomerOrderDAO;
 import com.pizza.api.exception.ApiException;
 import java.util.List;
 import java.util.UUID;
@@ -15,7 +15,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class AdminUserServiceImpl implements AdminUserService {
 
     @Autowired
-    private UserRepository userRepository;
+    private UserDAO userDAO;
 
     @Autowired
     private UserAddressRepository addressRepository;
@@ -24,14 +24,19 @@ public class AdminUserServiceImpl implements AdminUserService {
     private UserPaymentMethodRepository paymentMethodRepository;
 
     @Autowired
-    private CustomerOrderRepository orderRepository;
+    private CustomerOrderDAO orderDAO;
 
+    /**
+     * The whole list in one query.
+     *
+     * <p>This used to load the users and then, per user, count their orders and load their full
+     * address and card lists to measure them. {@link UserDAO#findAllForAdmin()} does the counting in
+     * the database instead.
+     */
     @Override
     @Transactional(readOnly = true)
     public List<AdminUserDTO> getAllUsers() {
-        return userRepository.findAllByOrderByCreatedAtDesc().stream()
-                .map(this::toDto)
-                .toList();
+        return userDAO.findAllForAdmin();
     }
 
     @Override
@@ -42,7 +47,7 @@ public class AdminUserServiceImpl implements AdminUserService {
 
         log.info("{} changing {} from {} to {}", actingAdminEmail, target.getEmail(), target.getRole(), role);
         target.setRole(role);
-        return toDto(userRepository.saveAndFlush(target));
+        return toDto(userDAO.save(target));
     }
 
     @Override
@@ -55,13 +60,13 @@ public class AdminUserServiceImpl implements AdminUserService {
         // long after the customer has gone.
         log.info("{} deleting {}", actingAdminEmail, target.getEmail());
         target.setDeleted(true);
-        userRepository.saveAndFlush(target);
+        userDAO.save(target);
     }
 
     // ------------------------------------------------------------------ helpers
 
     private User requireUser(UUID userId) {
-        return userRepository.findByPublicId(userId).orElseThrow(() -> ApiException.notFound("User", userId));
+        return userDAO.findByPublicId(userId).orElseThrow(() -> ApiException.notFound("User", userId));
     }
 
     /**
@@ -77,13 +82,19 @@ public class AdminUserServiceImpl implements AdminUserService {
         }
     }
 
+    /**
+     * Builds the response for a SINGLE user that was just written.
+     *
+     * <p>Three counts for one row is fine; the same three counts inside a loop over every user is
+     * what {@link UserDAO#findAllForAdmin()} exists to avoid.
+     */
     private AdminUserDTO toDto(User user) {
         return new AdminUserDTO(
                 user.getPublicId(),
                 user.getEmail(),
                 user.getFullName(),
                 user.getRole(),
-                orderRepository.countByUserId(user.getId()),
+                orderDAO.countByUserId(user.getId()),
                 addressRepository
                         .findByUserIdOrderByPrimaryDescCreatedAtDesc(user.getId())
                         .size(),
