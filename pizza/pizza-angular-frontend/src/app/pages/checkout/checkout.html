@@ -313,3 +313,32 @@
     </div>
   </div>
 }
+
+<!--
+  Asked only when the guard blocked a navigation, i.e. an order exists but was never paid for.
+  `app-modal` is the same hand-rolled component the pizza builder and the admin screens use, so the
+  question looks like the rest of the app rather than like the browser.
+-->
+<app-modal
+  [open]="askingToLeave()"
+  ariaLabel="Leave checkout?"
+  (closed)="answerLeave(false)"
+>
+  <span modal-title>Leave without paying?</span>
+
+  <div modal-body>
+    <p class="mb-0">
+      Your order is reserved but has not been paid for. If you leave now it will not be placed, and
+      you will have to start again.
+    </p>
+  </div>
+
+  <div modal-footer>
+    <button type="button" class="btn btn-outline-secondary" (click)="answerLeave(false)">
+      Stay and pay
+    </button>
+    <button type="button" class="btn btn-danger" (click)="answerLeave(true)">
+      Leave anyway
+    </button>
+  </div>
+</app-modal>

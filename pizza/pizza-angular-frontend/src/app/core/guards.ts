@@ -1,5 +1,5 @@
 import { inject } from '@angular/core';
-import { CanActivateFn, Router, UrlTree } from '@angular/router';
+import { CanActivateFn, CanDeactivateFn, Router, UrlTree } from '@angular/router';
 import { AuthService } from './auth.service';
 
 /* ==========================================================================
@@ -54,3 +54,36 @@ export const adminGuard: CanActivateFn = async (_route, state) => {
 function signIn(router: Router, returnUrl: string): UrlTree {
   return router.createUrlTree(['/login'], { queryParams: { returnUrl } });
 }
+
+/* ==========================================================================
+ * ANGULAR CONCEPT: CanDeactivateFn — a guard on the way OUT
+ *
+ * `CanActivateFn` decides whether a route may be entered. `CanDeactivateFn` decides whether it may
+ * be LEFT, and it is handed the live component instance — which is the whole point, because only
+ * the component knows whether there is anything worth stopping for.
+ *
+ * React Router's `useBlocker` is the closest equivalent and it works the other way round: the
+ * component subscribes to the navigation and blocks it from the inside. Here the router asks, and
+ * the component answers.
+ *
+ * The guard itself is deliberately this thin. Every decision — is there anything to lose, and what
+ * should we ask — belongs to the component; putting any of it here would mean a second place to
+ * look when checkout changes.
+ *
+ * Note the return type. A guard may answer with a PROMISE of a boolean, and `Checkout` uses that
+ * to hold the navigation open while it asks the question in a modal, resolving once the user picks.
+ * That is what makes a real confirmation possible without `window.confirm`, which cannot be styled,
+ * cannot be tested through the UI, and blocks the whole tab while it is up.
+ *
+ * ⚠️ This does NOT fire on a full page load, a reload or a closed tab — those never reach the
+ * router. Guarding against those needs a `beforeunload` listener, and browsers deliberately allow
+ * it to show only their own generic message.
+ * ========================================================================== */
+
+/** Implemented by any component that wants a say in whether it can be navigated away from. */
+export interface ConfirmsNavigation {
+  canDeactivate(): boolean | Promise<boolean>;
+}
+
+export const confirmLeaveGuard: CanDeactivateFn<ConfirmsNavigation> = (component) =>
+  component.canDeactivate();

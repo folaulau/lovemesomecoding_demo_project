@@ -1,0 +1,98 @@
+# Backing services for StayHub.
+#
+# Every port here is shifted off its default because this machine already runs the defaults:
+#   Postgres      5433  (5432 is a native install)
+#   Hasura        8081
+#   Elasticsearch 9200
+#
+# The app itself (FastAPI, the two React apps) is NOT in here — it is run from a terminal so it
+# reloads on save. Compose owns only the things that would be a pain to install natively.
+#
+#   docker compose up -d          # postgres + hasura + elasticsearch
+#   docker compose down           # stop
+#   docker compose down -v        # stop AND wipe the data
+
+name: stayhub
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: stayhub-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: stayhub
+      POSTGRES_PASSWORD: stayhub
+      POSTGRES_DB: stayhub
+    ports:
+      - "5433:5432"
+    volumes:
+      - stayhub-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      # `pg_isready` ships in the image. Health-check with a command the container actually has —
+      # a curl-based check on an image without curl reports unhealthy forever while the service
+      # serves happily, and `up --wait` then blames the wrong thing.
+      test: ["CMD-SHELL", "pg_isready -U stayhub -d stayhub"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  hasura:
+    image: hasura/graphql-engine:v2.42.0
+    container_name: stayhub-hasura
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8081:8080"
+    environment:
+      # Inside the compose network Postgres is reachable on its own port, 5432 — the 5433 shift
+      # is a host-side publish only. Using 5433 here is a classic and confusing failure.
+      HASURA_GRAPHQL_DATABASE_URL: postgres://stayhub:stayhub@postgres:5432/stayhub
+      HASURA_GRAPHQL_ENABLE_CONSOLE: "true"
+      HASURA_GRAPHQL_DEV_MODE: "true"
+      HASURA_GRAPHQL_ENABLED_LOG_TYPES: startup, http-log, webhook-log, websocket-log, query-log
+      HASURA_GRAPHQL_ADMIN_SECRET: stayhub-admin-secret
+      # Hasura verifies the SAME token FastAPI signs. One login, two services.
+      # The key must match STAYHUB_JWT_SECRET in stayhub-fastapi-backend/.env.
+      HASURA_GRAPHQL_JWT_SECRET: '{"type":"HS256","key":"dev-only-change-me-in-any-real-deployment-0123456789"}'
+      # A request with no Authorization header is treated as this role, so anonymous visitors can
+      # browse published listings. Its permissions are still declared in metadata — this only
+      # names the role, it grants nothing on its own.
+      HASURA_GRAPHQL_UNAUTHORIZED_ROLE: anonymous
+      # Expose columns to GraphQL as `pricePerNight`, not `price_per_night`. Without this the
+      # frontends read snake_case from Hasura and camelCase from FastAPI, and every component that
+      # touches both has to remember which is which.
+      HASURA_GRAPHQL_EXPERIMENTAL_FEATURES: naming_convention
+      HASURA_GRAPHQL_DEFAULT_NAMING_CONVENTION: graphql-default
+    volumes:
+      - ./hasura/metadata:/hasura-metadata
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8080/healthz || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.15.3
+    container_name: stayhub-elasticsearch
+    restart: unless-stopped
+    environment:
+      discovery.type: single-node
+      # Security off is a LOCAL-ONLY shortcut: it removes TLS and the built-in `elastic` password
+      # so the demo needs no certificate dance. Never do this anywhere reachable.
+      xpack.security.enabled: "false"
+      ES_JAVA_OPTS: "-Xms512m -Xmx512m"
+    ports:
+      - "9200:9200"
+    volumes:
+      - stayhub-esdata:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:9200/_cluster/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  stayhub-pgdata:
+  stayhub-esdata:

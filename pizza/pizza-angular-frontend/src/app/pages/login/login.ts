@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component, inject, input, signal } from '@angu
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import { AuthService } from '../../core/auth.service';
+import { Autofocus } from '../../core/autofocus.directive';
 
 /* ==========================================================================
  * ANGULAR CONCEPT: template-driven forms with `[(ngModel)]`
@@ -20,7 +21,7 @@ import { AuthService } from '../../core/auth.service';
 @Component({
   selector: 'app-login',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [FormsModule, RouterLink],
+  imports: [FormsModule, RouterLink, Autofocus],
   templateUrl: './login.html',
 })
 export class Login {

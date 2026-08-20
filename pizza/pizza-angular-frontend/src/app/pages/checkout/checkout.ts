@@ -7,8 +7,10 @@ import { AuthService } from '../../core/auth.service';
 import { CartService } from '../../core/cart.service';
 import { ProfileApiService } from '../../core/profile-api.service';
 import { errorMessage } from '../../core/api-error';
+import type { ConfirmsNavigation } from '../../core/guards';
 import { lineTotal } from '../../core/money';
 import { HumanisePipe, MoneyPipe } from '../../core/money.pipe';
+import { Modal } from '../../shared/modal/modal';
 import { StripePaymentForm } from '../../shared/stripe-payment-form/stripe-payment-form';
 import type {
   Address,
@@ -39,10 +41,10 @@ const NEW_ADDRESS = 'NEW';
 @Component({
   selector: 'app-checkout',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [ReactiveFormsModule, RouterLink, MoneyPipe, HumanisePipe, StripePaymentForm],
+  imports: [ReactiveFormsModule, RouterLink, MoneyPipe, HumanisePipe, StripePaymentForm, Modal],
   templateUrl: './checkout.html',
 })
-export class Checkout {
+export class Checkout implements ConfirmsNavigation {
   private readonly api = inject(ApiService);
   private readonly auth = inject(AuthService);
   private readonly cart = inject(CartService);
@@ -225,9 +227,45 @@ export class Checkout {
     }
   }
 
+  /* ==========================================================================
+   * ANGULAR CONCEPT: answering a CanDeactivate guard
+   *
+   * Step 1 POSTs the order, so from that moment there is a real PENDING_PAYMENT row in the
+   * database holding this cart. Walking away leaves it stranded — the customer thinks nothing
+   * happened, and the order sits there unpaid. THAT is what is worth interrupting a navigation
+   * for; a merely half-typed form is not, which is why this guards `created()` rather than
+   * `form.dirty`.
+   *
+   * The guard in core/guards.ts calls this method. Returning a promise holds the navigation open
+   * while the modal below asks, and `answerLeave` resolves it. No `window.confirm`: it cannot be
+   * styled, cannot be driven through the UI by Playwright, and freezes the tab while it is up.
+   * ========================================================================== */
+
+  /** The pending guard answer. `null` means nothing is being asked. */
+  private readonly leaveResolver = signal<((leave: boolean) => void) | null>(null);
+
+  readonly askingToLeave = computed(() => this.leaveResolver() !== null);
+
+  /** Set on the one navigation that is not an abandonment: the trip to the confirmation page. */
+  private readonly paid = signal(false);
+
+  canDeactivate(): boolean | Promise<boolean> {
+    if (this.paid() || !this.created()) return true;
+    return new Promise<boolean>((resolve) => this.leaveResolver.set(resolve));
+  }
+
+  answerLeave(leave: boolean): void {
+    const resolve = this.leaveResolver();
+    this.leaveResolver.set(null);
+    resolve?.(leave);
+  }
+
   /** Stripe accepted the card. The cart is done; the confirmation page confirms with the server. */
   async paymentSucceeded(): Promise<void> {
     const orderId = this.created()!.order.id;
+    // Before navigating, not after: the guard runs during navigate(), so setting this afterwards
+    // would pop the "abandon your order?" modal on the way to the success page.
+    this.paid.set(true);
     this.cart.clear();
     await this.router.navigate(['/order-confirmation', orderId]);
   }

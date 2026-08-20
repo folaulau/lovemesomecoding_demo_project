@@ -17,6 +17,7 @@
             type="email"
             required
             autocomplete="username"
+            appAutofocus
             [ngModel]="email()"
             (ngModelChange)="email.set($event)"
           />

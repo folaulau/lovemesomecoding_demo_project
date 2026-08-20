@@ -187,6 +187,9 @@ Deliberately the same split as React's Redux/Context line, so the two apps can b
   reactive AND template-driven forms, pipes, `ErrorHandler`, `httpResource`. The comments are the
   tutorial, and most of them say what React does about the same problem.
 - **Serve on port 4200.** The backend's CORS allowlist names 5173 and 4200 and nothing else.
+- ⚠️ **A `CanDeactivate` guard runs DURING `router.navigate()`.** Any "this navigation is fine"
+  flag must be set BEFORE the call, not after, or the guard fires on the very navigation it was
+  meant to allow. See `Checkout.paymentSucceeded`.
 - ⚠️ **`httpResource().value()` THROWS in an error state**, even with `defaultValue` set. Guard
   with `hasValue()` — otherwise a backend that is down blanks the page instead of showing the error
   branch the code carefully computes. See `core/menu.service.ts`.
@@ -303,6 +306,10 @@ is especially prone to this after an external Maven build.
 - **Playwright, driving every flow through the UI** — browse, cart, auth, checkout, orders,
   profile, admin, plus API guards not observable through the UI. **Both** frontends have a suite;
   they mirror each other.
+- `pizza-angular-frontend` also has a **Vitest unit suite** (`npm test`) for the things cheaper to
+  test in isolation: a pipe, a directive, a guard, the HTTP interceptor, and the debounced search.
+  ⚠️ Start Playwright only once the dev server has finished rebuilding — a run started mid-rebuild
+  has produced failures that then passed in isolation and on every later run.
 - ⚠️ **Never run the two suites at once.** They share the backend and the database, so each sees
   the other's fixtures and counts.
 - `npm run test:all` runs the whole suite. Prefer it: the narrower scripts name their specs

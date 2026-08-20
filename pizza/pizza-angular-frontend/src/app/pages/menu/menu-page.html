@@ -1,21 +1,64 @@
 <div class="container py-4">
   <h1 class="h3 fw-bold mb-3">Menu</h1>
 
-  <ul class="nav nav-tabs mb-4">
-    @for (filter of filters; track filter.key) {
-      <li class="nav-item">
-        <button
-          type="button"
-          class="nav-link"
-          [class.active]="activeFilter() === filter.key"
-          [attr.aria-current]="activeFilter() === filter.key ? 'page' : null"
-          (click)="applyFilter(filter.key)"
-        >
-          {{ filter.label }}
-        </button>
-      </li>
+  <!--
+    The search box is a plain input bound to a signal. Everything that makes it feel considered —
+    the debounce, the cancelling, the loading state — is in the RxJS pipeline in menu-page.ts, not
+    here.
+  -->
+  <div class="row g-2 align-items-center mb-3">
+    <div class="col-12 col-md-6 col-lg-4">
+      <label for="menu-search" class="visually-hidden">Search the menu</label>
+      <div class="input-group">
+        <input
+          id="menu-search"
+          type="search"
+          class="form-control"
+          placeholder="Search — try 'pepperoni' or 'pepsi'"
+          autocomplete="off"
+          [value]="searchTerm()"
+          (input)="searchTerm.set($any($event.target).value)"
+        />
+        @if (searchTerm()) {
+          <button
+            type="button"
+            class="btn btn-outline-secondary"
+            aria-label="Clear search"
+            (click)="clearSearch()"
+          >
+            Clear
+          </button>
+        }
+      </div>
+    </div>
+
+    @if (searchLoading()) {
+      <div class="col-auto text-body-secondary small" role="status">Searching…</div>
     }
-  </ul>
+  </div>
+
+  <!--
+    The type tabs are hidden while a search is running. Leaving them visible would be a lie: the
+    search deliberately ignores them, so an "active" Pizzas tab over a list containing a drink
+    reads as a bug.
+  -->
+  @if (!isSearching()) {
+    <ul class="nav nav-tabs mb-4">
+      @for (filter of filters; track filter.key) {
+        <li class="nav-item">
+          <button
+            type="button"
+            class="nav-link"
+            [class.active]="activeFilter() === filter.key"
+            [attr.aria-current]="activeFilter() === filter.key ? 'page' : null"
+            (click)="applyFilter(filter.key)"
+          >
+            {{ filter.label }}
+          </button>
+        </li>
+      }
+    </ul>
+  }
 
   @if (loading()) {
     <app-spinner label="Loading the menu…" />
@@ -28,6 +71,12 @@
         Try again
       </button>
     </div>
+  }
+
+  @if (noResults()) {
+    <p class="text-body-secondary">
+      Nothing on the menu matches “{{ searchTerm().trim() }}”.
+    </p>
   }
 
   @if (!loading() && !error()) {

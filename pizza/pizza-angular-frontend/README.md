@@ -27,25 +27,37 @@ Guest checkout works without signing in at all. Test card: `4242 4242 4242 4242`
 
 ## Tests
 
-Playwright, driving every flow through the UI.
+Two suites. **Vitest** for units that are cheaper to test in isolation, **Playwright** for every
+flow through the UI.
 
 ```bash
-npm run test:all                                   # 73 tests, ~50s
+npm test                                           # 23 unit tests, ~1s
+npm run test:all                                   # 73 Playwright tests, ~50s
 npm run test:admin                                 # just the admin screens
 STRIPE_SECRET_KEY=sk_test_… npm run test:payment   # confirms a real test-mode payment
 npm run screenshots                                # regenerates screenshots/
 ```
 
-The suite is **serial** (`workers: 1`): it is integration testing against one backend and one
-database. For the same reason, do not run it at the same time as the React suite — they share the
-database and would see each other's fixtures.
+The Playwright suite is **serial** (`workers: 1`): it is integration testing against one backend
+and one database. For the same reason, do not run it at the same time as the React suite — they
+share the database and would see each other's fixtures.
+
+⚠️ Start Playwright only once the dev server has finished rebuilding after an edit. A run started
+mid-rebuild has produced two failures (`admin.spec` topping, `payment.spec`) that then passed in
+isolation and on every later run.
+
+The unit specs are the ones to read for the testing tutorial: `money.pipe.spec.ts` (no TestBed at
+all), `autofocus.directive.spec.ts` (a host component, so the selector is exercised too),
+`guards.spec.ts` (`runInInjectionContext`), `api.interceptor.spec.ts` (`HttpTestingController`) and
+`menu-page.spec.ts` (fake timers plus `req.cancelled`, which is the only direct proof `switchMap`
+cancels).
 
 ## How it is built
 
 ```
 src/app/
 ├── core/       models · api.service · api.interceptor · api-error · storage · money(+pipe)
-│               auth/menu/cart/toast services (signals) · guards · stripe
+│               auth/menu/cart/toast services (signals) · guards · autofocus.directive · stripe
 ├── shared/     app-navbar · app-footer · cart-drawer · product-card · pizza-builder-modal
 │               modal · toast-host · spinner · stripe-payment-form · charts/
 ├── pages/      home · menu · checkout · order-confirmation · login · register · orders · profile
@@ -59,3 +71,15 @@ chunk — see the long note in `admin/store/index.ts`, including the one line th
 
 Nearly every file carries a comment explaining WHY it is written the way it is, and how the same
 problem is solved in the React build. That is the point of this app: the comments are the tutorial.
+
+### Four things that exist for the tutorial
+
+They are real features, not scaffolding, but they were added because the `/angular` track needed an
+example and the app had none. Each is covered by a unit test.
+
+| | Where | Why it is here |
+|---|---|---|
+| `Autofocus` directive | `core/autofocus.directive.ts`, on the login email field | There was no `@Directive` anywhere in the app |
+| Debounced menu search | `pages/menu/` | `toObservable` → `debounceTime` → `distinctUntilChanged` → `switchMap` → `toSignal`, against the existing `GET /api/search/products?q=` |
+| `confirmLeaveGuard` | `core/guards.ts`, on the `checkout` route | `CanDeactivateFn` returning a **promise**, so the "your order is not paid" question is a real modal instead of `window.confirm` |
+| The Vitest suite | five `*.spec.ts` files | There were no unit tests at all |

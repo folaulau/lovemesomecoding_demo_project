@@ -1,5 +1,5 @@
 import { Routes } from '@angular/router';
-import { adminGuard, authGuard } from './core/guards';
+import { adminGuard, authGuard, confirmLeaveGuard } from './core/guards';
 
 /* ==========================================================================
  * ANGULAR CONCEPT: lazy routes with loadComponent / loadChildren
@@ -32,6 +32,9 @@ export const routes: Routes = [
   {
     path: 'checkout',
     title: 'Checkout — PizzaHub',
+    // Leaving with an unpaid order stranded server-side is worth a question. The component
+    // decides; see `confirmLeaveGuard` and `Checkout.canDeactivate`.
+    canDeactivate: [confirmLeaveGuard],
     loadComponent: () => import('./pages/checkout/checkout').then((m) => m.Checkout),
   },
   {

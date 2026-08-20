@@ -1191,6 +1191,50 @@ was run with the key and passed.
   intermittently. Request post-data survives; response bodies do not. Those tests now read the order
   id off the page and ask the API for the order.
 
+## Phase 8 — four additions for the /angular tutorial track (2026-08-20)
+
+The `/angular` track (`projects/angular_tutorial/`) audited this app against its 29-lesson plan and
+found eight concepts the lessons needed and the app did not have. Folau chose which to close. All
+four additions keep the Playwright suite green and are covered by new unit tests.
+
+| Added | Where | The gap it closed |
+|---|---|---|
+| `Autofocus` directive | `core/autofocus.directive.ts`, used on the login email field | There was **no `@Directive` at all** in the app |
+| Debounced menu search | `pages/menu/menu-page.ts` + `.html` | No `toSignal`, `toObservable`, `debounceTime` or `shareReplay` anywhere — RxJS was only `switchMap`/`catchError` inside NgRx effects |
+| `confirmLeaveGuard` | `core/guards.ts`, on the `checkout` route | Only `CanActivateFn` existed; no `CanDeactivate` |
+| Vitest unit suite | 5 spec files, 23 tests | **Zero** unit tests — Vitest was installed and unused |
+
+Decisions worth keeping:
+
+- **The search needed no backend change.** `GET /api/search/products?q=` already existed —
+  Elasticsearch-backed under the `search` profile, with a database `LIKE` fallback so it always
+  answers. The frontend just calls it.
+- **The guard fires on the unpaid ORDER, not on a dirty form.** Once step 1 POSTs, a real
+  `PENDING_PAYMENT` row exists holding the cart; walking away strands it. A half-typed form is not
+  worth interrupting anyone for. `Checkout.canDeactivate()` returns a **promise** that the
+  `app-modal` resolves, so there is no `window.confirm` — which cannot be styled, freezes the tab,
+  and cannot be driven through the UI by Playwright.
+- ⚠️ **`paid.set(true)` goes BEFORE `router.navigate`**, not after. The guard runs *during* the
+  navigation, so setting it afterwards pops the "abandon your order?" modal on the way to the
+  success page.
+- **`@angular/ssr` was deliberately NOT added.** It touches Stripe.js, `localStorage` and `window`
+  access across the whole app. The tutorial cut its SSR lesson instead (29 → 28 posts).
+- `@defer`, `@switch` and `linkedSignal` were also left out — all three are teachable without a
+  worked example, and adding them purely to be quoted would be scaffolding.
+
+### Gotchas paid for while writing the unit tests
+- **A stub service must cover the whole component TREE, not just the component.** `menu-page.spec`
+  stubs `MenuService`, but the template renders `<app-pizza-builder-modal>`, which injects
+  `CartService`, which reads `menu.crusts()` in an effect. A four-member stub failed inside change
+  detection with `this.menu.crusts is not a function` — a stack trace pointing at `CartService` for
+  a spec about the menu page.
+- **Fixtures need their real shape.** `ProductCard` maps over `product.sizes`; a trimmed literal
+  fails deep inside a child template rather than in the spec that wrote it.
+- **`provideHttpClientTesting()` must come AFTER `provideHttpClient()`** — it replaces the backend
+  the first one installed. Reversed, the real backend wins and the tests hit the network.
+- **`req.cancelled` is the only direct proof `switchMap` unsubscribed.** Asserting on the final
+  rendered results cannot distinguish "cancelled the stale request" from "got lucky with ordering".
+
 ## Still open
 
 - Checkout still does not offer saved cards, in EITHER frontend. Cards can be saved and managed on
