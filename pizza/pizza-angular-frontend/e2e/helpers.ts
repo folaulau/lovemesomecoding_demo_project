@@ -71,3 +71,26 @@ export async function tokenFor(
   const response = await request.post(`${API}/api/auth/login`, { data: who });
   return (await response.json()).token;
 }
+
+/**
+ * The order id the checkout page prints once step 1 has succeeded.
+ *
+ * <p>Reading it off the page — rather than out of the POST response — is deliberate. Playwright
+ * discards a response body as soon as the page navigates, and Stripe mounting its card iframes
+ * counts: `response.json()` intermittently failed with "No data found for resource with given
+ * identifier". The id is on screen anyway, and the API can be asked for the rest.
+ */
+export async function reservedOrderId(page: Page): Promise<string> {
+  const code = page.locator('.sticky-summary code');
+  await expect(code).toBeVisible();
+  return (await code.textContent())!.trim();
+}
+
+/** The order as the SERVER currently reports it. The only authority on what anything cost. */
+export async function fetchOrder(
+  request: { get: (url: string) => Promise<{ json(): Promise<Record<string, number>> }> },
+  orderId: string,
+) {
+  const response = await request.get(`${API}/api/orders/${orderId}/payment-status`);
+  return response.json();
+}

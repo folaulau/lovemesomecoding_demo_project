@@ -30,7 +30,7 @@ instructions; that one is the state.
 ### Still open
 - **Checkout does not yet offer saved cards** — it always collects a fresh one. Cards can be saved
   and managed on the profile page; wiring "pay with a saved card" is the natural next step.
-- `pizza-angular-frontend` is empty. Phase 7.
+  This is true of **both** frontends.
 
 ---
 
@@ -138,7 +138,72 @@ src/
   The comments are the tutorial.
 - Server prices are authoritative. The browser's arithmetic is a preview; the moment an order
   exists, show the server's figures.
-- `pizza-angular-frontend` will use **Tailwind** (not Bootstrap) against the same API.
+- `pizza-angular-frontend` uses **Bootstrap**, not Tailwind. (An earlier plan said Tailwind; it was
+  overruled so the two frontends are visually identical and the diff between them is purely
+  framework. `pizza-angular-frontend/src/styles/` is a copy of these tokens.)
+
+### Frontend — `pizza-angular-frontend`
+
+Angular 21 (standalone, **zoneless**) + TypeScript + Bootstrap 5, against the same API and the same
+`_tokens.scss`/`theme.scss`. NgRx 21.
+
+```
+src/app/
+├── core/       models · api.service · api.interceptor · api-error · storage · money(+pipe)
+│               auth/menu/cart/toast services (signals) · guards · stripe
+├── shared/     app-navbar · app-footer · cart-drawer · product-card · pizza-builder-modal
+│               modal · toast-host · spinner · stripe-payment-form · charts/
+├── pages/      home · menu · checkout · order-confirmation · login · register · orders · profile
+└── admin/      admin.routes (lazy) · admin-layout · store/ (NgRx) · pages/ (six screens)
+```
+
+#### State: NgRx for admin, signal services for customers
+Deliberately the same split as React's Redux/Context line, so the two apps can be read side by side.
+- **Customer pages use root-provided services holding signals** — `AuthService`, `MenuService`,
+  `CartService`, `ToastService`. No provider components: `providedIn: 'root'` is what makes them
+  shared, so there is no equivalent of the four nested `<Provider>`s in `main.tsx`.
+- **Admin pages use NgRx.** Four features: `catalog` (products + toppings + crusts — one domain,
+  one feature), `orders`, `reports`, `users`.
+- **`provideState`/`provideEffects` go on the `/admin` route**, so they ship in the lazy admin chunk.
+- ⚠️ **`provideStore()` cannot go with them.** `EffectsRunner` is `providedIn: 'root'` and injects
+  the Store, so a route-provided store is invisible to it and the first admin navigation dies with
+  `NG0201: No provider found for _Store`, thrown from a factory, with nothing failing at build time.
+  It lives in `app.config.ts`; the ~16 kB raw / 4.4 kB transferred is the price.
+- Only shared state goes in the store. Which modal is open and what is typed into a form stay in
+  component signals — admin screens still inject `AuthService`, `ToastService` and `MenuService`.
+- ⚠️ NgRx does **not** use Immer. `state.items.push(x)` in a reducer is a real bug, not a draft
+  write. Every branch returns a new object. (Redux Toolkit is the opposite, which is the trap when
+  moving between the two.)
+- A component learns whether a dispatch worked by awaiting the success/failure ACTION —
+  `store/outcome.ts`. It is the NgRx answer to RTK's `.unwrap()`, and it has its own ordering trap:
+  subscribe before dispatching.
+- ⚠️ An `ApiError` is not serialisable, so it is flattened to `{message, fieldErrors}` before it
+  becomes an action — `store/api-failure.ts`. Same reason as the React app's `store/apiFailure.ts`.
+
+#### Other Angular rules
+- **Use Angular's major features and comment WHY each one earns its place** — signals, `computed`,
+  `effect` with `onCleanup`, `input()`/`output()`, `viewChild`, `afterRenderEffect`, `inject()`,
+  the `@if`/`@for`/`@let` control flow, `OnPush`, lazy routes, functional guards and interceptors,
+  reactive AND template-driven forms, pipes, `ErrorHandler`, `httpResource`. The comments are the
+  tutorial, and most of them say what React does about the same problem.
+- **Serve on port 4200.** The backend's CORS allowlist names 5173 and 4200 and nothing else.
+- ⚠️ **`httpResource().value()` THROWS in an error state**, even with `defaultValue` set. Guard
+  with `hasValue()` — otherwise a backend that is down blanks the page instead of showing the error
+  branch the code carefully computes. See `core/menu.service.ts`.
+- ⚠️ **A required input is not readable from a constructor.** `input.required()` is assigned after
+  construction, so reading one there throws `NG0950` at runtime. Use `ngOnInit` or an `effect`.
+  See `pages/order-confirmation/`.
+- ⚠️ **Backticks cannot appear inside an inline `template:`** — it is a template literal, so a
+  backtick in a comment ends it and the errors point at the wrong line entirely. And `@` in a
+  template is control-flow syntax: an email address needs `&#64;`.
+- ⚠️ **A chart component needs `:host { display: block }`** or `ResizeObserver` measures its content
+  rather than the available width, and the chart silently draws at half size.
+- react-bootstrap has no Angular equivalent, so the modal, the offcanvas drawer and the toasts are
+  hand-rolled over Bootstrap's own markup and classes rather than driven through Bootstrap's
+  JavaScript. `theme.scss` supplies the two `display` rules that JavaScript would otherwise set
+  inline. Known gap: the drawer does not trap focus.
+- Charts are hand-written SVG (`shared/charts/`) rather than a chart library — same visual design
+  and the same data-viz rules as the React app's Recharts version.
 
 ---
 
@@ -179,9 +244,16 @@ cd pizza-springboot-backend && ./mvnw spring-boot:run     # :8085, Swagger at /s
 ./mvnw test                                               # 60 tests
 ./mvnw spotless:apply                                     # before committing Java
 
-# frontend
+# frontend — React
 cd pizza-react-frontend && nvm use && npm run dev          # :5173
+
+# frontend — Angular (same backend)
+cd pizza-angular-frontend && nvm use && npm start          # :4200
 ```
+
+⚠️ **The Angular app must be served on 4200 and the React app on 5173** — those two origins are
+what `pizza.cors.allowed-origins` allows. Any other port fails CORS, and the symptom is a blank
+page rather than an error anyone would recognise.
 
 ### Backing services — `pizza-springboot-backend/docker-compose.yml`
 
@@ -229,7 +301,10 @@ is especially prone to this after an external Maven build.
 ## Test
 
 - **Playwright, driving every flow through the UI** — browse, cart, auth, checkout, orders,
-  profile, admin, plus API guards not observable through the UI.
+  profile, admin, plus API guards not observable through the UI. **Both** frontends have a suite;
+  they mirror each other.
+- ⚠️ **Never run the two suites at once.** They share the backend and the database, so each sees
+  the other's fixtures and counts.
 - `npm run test:all` runs the whole suite. Prefer it: the narrower scripts name their specs
   explicitly, and a new spec is not run until someone remembers to add it.
 - Payment: order → confirm with Stripe's test card → assert **our** API reports `PAID`.

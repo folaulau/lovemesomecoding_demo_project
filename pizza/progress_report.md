@@ -1042,11 +1042,159 @@ later check ran on 8086 to keep the two apart.
 
 ## Open questions
 
-- Phase 7 (Angular against the same API) is the only planned work left.
+- ~~Phase 7 (Angular against the same API) is the only planned work left.~~ **Done — see the
+  Phase 7 section at the end of this file.**
 - Saved cards are stored and manageable, but **checkout does not yet offer them** — it always
   collects a card. Wiring "pay with a saved card" is the natural next step.
 - The remaining DAOs (`Product`, `Topping`, `Crust`, `Cart`, `CustomerOrder`) are repository-only,
   because none of them currently needs a query that aggregates. Wire `JdbcTemplate` into one the
   moment it does, rather than pre-emptively.
-- The Angular frontend (Phase 7) has both patterns to copy from now — pick its state library
-  deliberately rather than by default.
+- ~~The Angular frontend (Phase 7) has both patterns to copy from now — pick its state library
+  deliberately rather than by default.~~ **Decided: signals for customers, NgRx for admin — the
+  same split, so the two apps read side by side.**
+
+---
+
+# Phase 7 — `pizza-angular-frontend` (DONE, 2026-08-20)
+
+Full feature parity with the React app against the same backend: home, menu + builder, cart drawer,
+guest and signed-in checkout with Stripe, order-confirmation polling, login/register, order history,
+profile (addresses + saved cards), and all six admin screens with real charts.
+
+**73 Playwright tests, all passing, twice through (`--repeat-each=2` = 146/146).** Production build
+clean.
+
+Not carried over: `/interview-questions`. Its content is twenty React questions; the Angular
+equivalent would be a different article, not a port.
+
+## The versions, and why they are not the newest
+
+`ng new` produced **Angular 22**. NgRx's newest stable is **21**, and only a `22.0.0-rc.0` supports
+Angular 22 — so the scaffold was thrown away and redone on **Angular 21**, which NgRx 21 peers
+against cleanly. Shipping an rc state library in an app whose whole job is to be copied from was
+the worse trade.
+
+Angular 21 scaffolds **zoneless** — there is no `zone.js` in `package.json` at all.
+
+## Bootstrap, not Tailwind
+
+`CLAUDE.md` said this app would use Tailwind. Overruled on request: both frontends now use
+Bootstrap 5 and the SAME `_tokens.scss` / `theme.scss`, copied across. The point of having two
+frontends is that the diff between them is purely framework — a different CSS framework would have
+buried that under a styling diff. `CLAUDE.md` has been corrected.
+
+Only the data-viz block of `theme.scss` differs: the React version styles Recharts' class names,
+the Angular one styles our own SVG.
+
+## The state split, deliberately mirrored
+
+Signals for customers, NgRx for admin — the same line the React app draws between Context and
+Redux, so the two can be read side by side.
+
+| | React | Angular |
+|---|---|---|
+| shared customer state | four Contexts + Providers in `main.tsx` | four `providedIn: 'root'` services holding signals |
+| derived values | `useMemo(fn, [deps])` | `computed(fn)` — no dependency array to get wrong |
+| side effects | `useEffect` + cleanup | `effect(onCleanup => …)` |
+| stable callbacks | `useCallback` | not needed — nothing to stabilise |
+| skip re-render | `React.memo` | `ChangeDetectionStrategy.OnPush` |
+| escape the DOM tree | `createPortal` for toasts | not needed — the host sits above every page |
+| catch a render error | class `ErrorBoundary` | `ErrorHandler` (app-wide, but NOT a UI fallback) |
+| admin data | Redux Toolkit slices | NgRx features + effects |
+| did the dispatch work? | `.unwrap()` | await the success/failure action (`store/outcome.ts`) |
+| fetch a list | hand-rolled loading/error/AbortController | `httpResource` |
+
+Angular needs no `<Provider>` nesting at all: the injector, not the component tree, is what makes a
+service shared. That is the single biggest structural difference between the two apps.
+
+## ⚠️ Six things that cost real time
+
+### `provideStore()` cannot live on the lazy route
+The plan was to put the entire NgRx store on `/admin`, matching the React app's `<Provider>` inside
+a lazy `AdminLayout` — which genuinely keeps every byte of Redux out of the entry bundle.
+
+It compiles, it serves, and then the first admin navigation dies with **`NG0201: No provider found
+for _Store`**, thrown from `EffectsRunner_Factory`. `EffectsRunner` is `providedIn: 'root'` and
+injects the Store, so it resolves from the ROOT injector, where a route-provided store does not
+exist. Nothing fails at build time; the stack trace is the only clue.
+
+`provideStore()` now sits in `app.config.ts`. Measured cost, by building both ways: **+15.9 kB raw
+/ +4.4 kB transferred** in the entry bundle. Everything admin-SPECIFIC is still lazy — four
+features, ten effects and every action string land in a 4.6 kB chunk (937 bytes over the wire) that
+only an admin fetches. Verified by grepping the built chunks: zero `ngrx` hits in the entry bundle's
+files. React's split is cleaner here and Angular cannot quite match it.
+
+### `httpResource().value()` THROWS in an error state
+Even with `defaultValue: []` set — the default covers loading and idle, not failure. With the
+backend refusing CORS the menu page did not show the "Could not load the menu" alert `MenuService`
+carefully computes; it threw `ResourceValueError` inside the template and blanked the page. Guard
+with `hasValue()`, which is why those three signals are `computed` rather than the resource's own.
+
+### A required input is not readable from a constructor
+`input.required()` is assigned AFTER construction. The confirmation page started its polling loop in
+its constructor and died on `NG0950: Input "orderId" is required but no value is available yet` —
+at runtime, on the real page. Moved to `ngOnInit`.
+
+### CORS, and why the port is not arbitrary
+The Angular dev server was started on 4300 and every request failed CORS with an empty page. The
+backend already allows `http://localhost:4200` (`pizza.cors.allowed-origins`) — it had anticipated
+this app. Serving on 4200 needed no backend change at all. **Do not change the port.**
+
+### Backticks inside an inline `template:`
+An inline template IS a template literal, so a backtick in an HTML comment inside one ends the
+string early. The compiler then reports `TS1005: ',' expected` pointing at prose, several errors
+deep, nowhere near the cause. Three components had it. Related: `@` in a template is control-flow
+syntax now, so `admin@pizza.test` has to be written `admin&#64;pizza.test`.
+
+### A chart host is `display: inline` by default
+`ResizeObserver` then reports the width of the CONTENT rather than of the available space, and both
+charts drew at roughly half the card width — which reads as a Bootstrap layout bug. `:host { display:
+block }` in the chart components themselves, since the measurement is their job.
+
+## Things that are hand-rolled, and why
+
+react-bootstrap has no Angular equivalent, and Bootstrap's own JavaScript means holding an
+imperative `new bootstrap.Modal(el)` handle in step with a declarative template — two sources of
+truth for "is this open".
+
+- **`<app-modal>`** — Bootstrap's markup and classes, `.show` toggled by the component, named
+  content-projection slots (`[modal-title]`, `[modal-body]`, `[modal-footer]`) standing in for
+  `Modal.Header`/`Body`/`Footer`. `afterRenderEffect` moves focus in.
+- **`<app-cart-drawer>`** — same approach for the offcanvas. **Known gap: focus is not trapped.**
+  Bootstrap's CSS does not do that; its JavaScript does. Escape and the backdrop click are wired up.
+- **`<app-toast-host>`** — one instance in the shell, so no portal is needed.
+- **`theme.scss`** supplies the two `display` rules Bootstrap's JavaScript would otherwise set inline.
+- **Charts** — hand-written SVG with a `ResizeObserver`, rather than adding a chart library for two
+  charts. Same visual design and the same data-viz rules as the Recharts version: one series, no
+  dual axis, no entry animation, thin marks with full-height hit targets, a table instead of a pie.
+
+## Test suite
+
+`e2e/`: `browse`, `cart`, `auth`, `checkout`, `orders`, `profile`, `admin`, `api-guards`, `payment`,
+`screenshots`. Serial (`workers: 1`), against the real backend and database.
+
+⚠️ **Never run the Angular and React suites at the same time** — they share the database and would
+see each other's fixtures.
+
+The payment integration test confirms a real test-mode PaymentIntent through Stripe's API and then
+asserts OUR API reports `PAID` — same approach and the same reason as the React suite (Stripe's card
+iframe runs hCaptcha and cannot be automated headlessly). It skips without `STRIPE_SECRET_KEY`; it
+was run with the key and passed.
+
+### Three test bugs worth remembering
+- `textContent()` reads ONCE with no retry. Reading a price straight after a click races the
+  framework's render. Use `toHaveText`/`toContainText`, which retry.
+- The same applies to `count()`: a test passed alone and failed in the full suite because the URL
+  changes a frame before the list re-renders. Wait for a settled condition, then measure.
+- **`response.json()` is not safe after a navigation.** Stripe mounting its iframes was enough to
+  make Playwright discard the body — "No data found for resource with given identifier",
+  intermittently. Request post-data survives; response bodies do not. Those tests now read the order
+  id off the page and ask the API for the order.
+
+## Still open
+
+- Checkout still does not offer saved cards, in EITHER frontend. Cards can be saved and managed on
+  the profile page; wiring "pay with a saved card" remains the natural next step.
+- The cart drawer does not trap focus (see above).
+- `httpResource` is marked `@experimental` in Angular 21. Used deliberately — it is the concept
+  `MenuService` exists to teach — but it is a label to weigh before copying into production code.

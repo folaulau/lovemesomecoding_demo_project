@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { API, addProduct, openCart } from './helpers';
+import { API, addProduct, fetchOrder, openCart, reservedOrderId } from './helpers';
 
 /**
  * The full payment path: order created → Stripe charged → our order becomes PAID.
@@ -19,7 +19,7 @@ import { API, addProduct, openCart } from './helpers';
 
 const STRIPE_SECRET_KEY = process.env['STRIPE_SECRET_KEY'];
 
-test('the card element mounts and the Pay button shows the SERVER total', async ({ page }) => {
+test('the card element mounts and the Pay button shows the SERVER total', async ({ page, request }) => {
   await page.goto('/');
   await page.evaluate(() => localStorage.clear());
 
@@ -33,19 +33,16 @@ test('the card element mounts and the Pay button shows the SERVER total', async 
   await page.getByLabel('Name').fill('Payment Tester');
   await page.getByLabel('Email').fill('payment@example.com');
 
-  // Body read as it arrives — see the note in checkout.spec.ts.
-  const created = page
-    .waitForResponse((r) => r.url().endsWith('/api/orders') && r.request().method() === 'POST')
-    .then((r) => r.json());
-
   await page.getByRole('button', { name: 'Continue to payment' }).click();
-  const { order } = await created;
+  const order = await fetchOrder(request, await reservedOrderId(page));
 
   // Stripe's iframe really mounted — this is the part with no @stripe/react-stripe-js to do it.
   await expect(page.frameLocator('iframe[name^="__privateStripeFrame"]').first().locator('body')).toBeAttached();
 
   // And the button quotes the server's figure, not the browser's preview.
-  await expect(page.getByRole('button', { name: new RegExp(`Pay \\$${order.total.toFixed(2)}`) })).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: new RegExp(`Pay \\$${order['total'].toFixed(2)}`) }),
+  ).toBeVisible();
 });
 
 test.describe('payment integration', () => {

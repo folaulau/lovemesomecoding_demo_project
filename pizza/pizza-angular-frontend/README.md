@@ -1,59 +1,61 @@
-# PizzaAngularFrontend
+# pizza-angular-frontend
 
-This project was generated using [Angular CLI](https://github.com/angular/angular-cli) version 21.2.21.
+The Angular build of PizzaHub. Same backend, same Bootstrap theme, same features as
+`pizza-react-frontend` — written the way Angular wants it written, so the two can be read
+side by side.
 
-## Development server
-
-To start a local development server, run:
-
-```bash
-ng serve
-```
-
-Once the server is running, open your browser and navigate to `http://localhost:4200/`. The application will automatically reload whenever you modify any of the source files.
-
-## Code scaffolding
-
-Angular CLI includes powerful code scaffolding tools. To generate a new component, run:
+Angular 21 (standalone, zoneless) · TypeScript · Bootstrap 5 · NgRx 21 (admin only) · Stripe.js
 
 ```bash
-ng generate component component-name
+nvm use            # Node 22
+npm install
+npm start          # http://localhost:4200
 ```
 
-For a complete list of available schematics (such as `components`, `directives`, or `pipes`), run:
+The backend has to be running on **:8085**:
 
 ```bash
-ng generate --help
+cd ../pizza-springboot-backend && ./mvnw spring-boot:run -Dspring-boot.run.profiles=local
 ```
 
-## Building
+> ⚠️ Port **4200** is not arbitrary. The backend's `pizza.cors.allowed-origins` lists
+> `http://localhost:5173` (React) and `http://localhost:4200` (Angular). Serve on anything else and
+> every request fails CORS with an empty page and no obvious cause.
 
-To build the project run:
+Demo logins: `admin@pizza.test` / `admin123` · `customer@pizza.test` / `pizza123`.
+Guest checkout works without signing in at all. Test card: `4242 4242 4242 4242`.
+
+## Tests
+
+Playwright, driving every flow through the UI.
 
 ```bash
-ng build
+npm run test:all                                   # 73 tests, ~50s
+npm run test:admin                                 # just the admin screens
+STRIPE_SECRET_KEY=sk_test_… npm run test:payment   # confirms a real test-mode payment
+npm run screenshots                                # regenerates screenshots/
 ```
 
-This will compile your project and store the build artifacts in the `dist/` directory. By default, the production build optimizes your application for performance and speed.
+The suite is **serial** (`workers: 1`): it is integration testing against one backend and one
+database. For the same reason, do not run it at the same time as the React suite — they share the
+database and would see each other's fixtures.
 
-## Running unit tests
+## How it is built
 
-To execute unit tests with the [Vitest](https://vitest.dev/) test runner, use the following command:
-
-```bash
-ng test
+```
+src/app/
+├── core/       models · api.service · api.interceptor · api-error · storage · money(+pipe)
+│               auth/menu/cart/toast services (signals) · guards · stripe
+├── shared/     app-navbar · app-footer · cart-drawer · product-card · pizza-builder-modal
+│               modal · toast-host · spinner · stripe-payment-form · charts/
+├── pages/      home · menu · checkout · order-confirmation · login · register · orders · profile
+└── admin/      admin.routes (lazy) · admin-layout · store/ (NgRx) · pages/ (six screens)
 ```
 
-## Running end-to-end tests
+**State is split the same way the React app splits it, for the same reasons.**
+Customer-facing screens use signal-based services injected from the root; the admin section uses
+NgRx. The store's four features are registered on the `/admin` route so they ship in the lazy admin
+chunk — see the long note in `admin/store/index.ts`, including the one line that cannot move there.
 
-For end-to-end (e2e) testing, run:
-
-```bash
-ng e2e
-```
-
-Angular CLI does not come with an end-to-end testing framework by default. You can choose one that suits your needs.
-
-## Additional Resources
-
-For more information on using the Angular CLI, including detailed command references, visit the [Angular CLI Overview and Command Reference](https://angular.dev/tools/cli) page.
+Nearly every file carries a comment explaining WHY it is written the way it is, and how the same
+problem is solved in the React build. That is the point of this app: the comments are the tutorial.

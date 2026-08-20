@@ -1,5 +1,14 @@
 import { expect, test } from '@playwright/test';
-import { API, CUSTOMER, addProduct, openCart, requireBackend, signIn } from './helpers';
+import {
+  API,
+  CUSTOMER,
+  addProduct,
+  fetchOrder,
+  openCart,
+  requireBackend,
+  reservedOrderId,
+  signIn,
+} from './helpers';
 
 /** Checkout: the two-step flow, validation, and who decides the price. */
 
@@ -35,7 +44,7 @@ test('a GUEST can create an order end to end — signing in is never required', 
   await expect(page.getByText(/is reserved/)).toBeVisible();
 });
 
-test('the summary switches to the SERVER figures once the order exists', async ({ page }) => {
+test('the summary switches to the SERVER figures once the order exists', async ({ page, request }) => {
   await page.goto('/menu?type=PIZZA');
   await addProduct(page, 'Pepperoni Pizza', { size: 'MEDIUM' });
 
@@ -43,28 +52,18 @@ test('the summary switches to the SERVER figures once the order exists', async (
   await cart.getByRole('button', { name: 'Checkout' }).click();
   await fillGuestDetails(page);
 
-  /*
-   * `.then(r => r.json())` is attached HERE, not awaited later. Playwright discards a response
-   * body once the page navigates, and reading it after the await sometimes lost the race with
-   * Stripe.js — "No data found for resource with given identifier". Chaining reads the body the
-   * moment the response arrives.
-   */
-  const created = page
-    .waitForResponse((r) => r.url().endsWith('/api/orders') && r.request().method() === 'POST')
-    .then((r) => r.json());
-
   await page.getByRole('button', { name: 'Continue to payment' }).click();
-  const order = (await created).order;
+
+  // Ask the SERVER what the order costs, then check the page is showing that.
+  const order = await fetchOrder(request, await reservedOrderId(page));
 
   /*
-   * Whatever the browser was previewing, these are now the server's numbers.
-   *
    * Scoped to the TOTAL row rather than "any element containing this figure" — the same amount can
    * legitimately appear twice in the summary (a single-line cart's line total equals its subtotal),
    * and a loose text match then fails on strict mode instead of on the thing being tested.
    */
   const summary = page.locator('.sticky-summary');
-  await expect(summary.locator('.fs-5.fw-bold')).toContainText(`$${order.total.toFixed(2)}`);
+  await expect(summary.locator('.fs-5.fw-bold')).toContainText(`$${order['total'].toFixed(2)}`);
 });
 
 test('the browser cannot dictate a price — the server reprices the cart', async ({ page, request }) => {
@@ -75,30 +74,34 @@ test('the browser cannot dictate a price — the server reprices the cart', asyn
   await cart.getByRole('button', { name: 'Checkout' }).click();
   await fillGuestDetails(page);
 
-  // Request payload and response body both captured as the response arrives, before anything can
-  // navigate away and discard them.
-  const captured = page
-    .waitForResponse((r) => r.url().endsWith('/api/orders') && r.request().method() === 'POST')
-    .then(async (r) => ({ sent: r.request().postData() ?? '{}', body: await r.json() }));
+  /*
+   * The REQUEST payload, captured from the request event. A request's post data is held by
+   * Playwright and stays readable; a response BODY does not survive the page navigating, which is
+   * why the order itself is fetched from the API below rather than read out of the response.
+   */
+  let sent = '';
+  page.on('request', (r) => {
+    if (r.url().endsWith('/api/orders') && r.method() === 'POST') sent = r.postData() ?? '';
+  });
 
   await page.getByRole('button', { name: 'Continue to payment' }).click();
-  const { sent, body } = await captured;
+  const order = await fetchOrder(request, await reservedOrderId(page));
 
   // Nothing resembling a price is even sent.
+  expect(sent).not.toBe('');
   expect(sent).not.toMatch(/price|subtotal|total/i);
 
   // And the server's total matches the menu: $13.99 + 8.5% tax + $3.99 delivery.
-  const { order } = body;
-  expect(order.subtotal).toBe(13.99);
-  expect(order.deliveryFee).toBe(3.99);
-  expect(order.total).toBeCloseTo(13.99 + 1.19 + 3.99, 2);
+  expect(order['subtotal']).toBe(13.99);
+  expect(order['deliveryFee']).toBe(3.99);
+  expect(order['total']).toBeCloseTo(13.99 + 1.19 + 3.99, 2);
 
   // Leave the database as we found it.
   const login = await request.post(`${API}/api/auth/login`, {
     data: { email: 'admin@pizza.test', password: 'admin123' },
   });
   const { token } = await login.json();
-  await request.patch(`${API}/api/admin/orders/${order.id}/status`, {
+  await request.patch(`${API}/api/admin/orders/${order['id']}/status`, {
     data: { status: 'CANCELLED' },
     headers: { Authorization: `Bearer ${token}` },
   });
