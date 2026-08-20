@@ -1,0 +1,8 @@
+/*
+ * The global stylesheet.
+ *
+ * Bootstrap's own CSS is listed FIRST in `angular.json` -> architect.build.options.styles, and
+ * this file second, so our overrides win on equal specificity without a single `!important`.
+ * The React app does the same thing with two imports at the top of `main.tsx`.
+ */
+@use 'styles/theme';

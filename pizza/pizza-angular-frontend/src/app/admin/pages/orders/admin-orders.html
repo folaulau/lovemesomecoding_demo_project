@@ -1,0 +1,77 @@
+@if (loading() && orders().length === 0) {
+  <app-spinner label="Loading orders…" />
+} @else {
+  <h2 class="h5 fw-bold mb-3">Orders</h2>
+
+  @if (error(); as message) {
+    <div class="alert alert-danger">{{ message }}</div>
+  }
+
+  <div class="card border-0 shadow-sm">
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-hover mb-0 align-middle">
+          <thead>
+            <tr>
+              <th class="ps-3">Order</th>
+              <th>Customer</th>
+              <th>Placed</th>
+              <th>Type</th>
+              <th class="text-end">Total</th>
+              <th>Status</th>
+              <th class="pe-3">Move to</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (order of orders(); track order.id) {
+              <tr>
+                <td class="ps-3 font-monospace small">{{ shortId(order.id) }}</td>
+                <td>
+                  <div class="small fw-semibold">{{ order.customerName }}</div>
+                  <div class="text-muted small">{{ order.email }}</div>
+                </td>
+                <td class="small">{{ order.createdAt | date: 'mediumDate' }}</td>
+                <td class="small">{{ order.orderType | humanise }}</td>
+                <td class="text-end">{{ order.total | money }}</td>
+                <td>
+                  <span class="badge bg-{{ variant(order.status) }}">
+                    {{ order.status | humanise }}
+                  </span>
+                </td>
+                <td class="pe-3">
+                  <select
+                    class="form-select form-select-sm"
+                    style="min-width: 10rem"
+                    [attr.aria-label]="'Change status of order ' + shortId(order.id)"
+                    [value]="order.status"
+                    (change)="changeStatus(order, $any($event.target).value)"
+                  >
+                    @for (status of statuses; track status) {
+                      <option [value]="status" [selected]="status === order.status">
+                        {{ status | humanise }}
+                      </option>
+                    }
+                  </select>
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  @if (totalPages() > 1) {
+    <div class="d-flex justify-content-between align-items-center mt-3">
+      <button type="button" class="btn btn-sm btn-outline-secondary" [disabled]="page() === 0"
+              (click)="goToPage(page() - 1)">
+        Previous
+      </button>
+      <span class="small text-muted">Page {{ page() + 1 }} of {{ totalPages() }}</span>
+      <button type="button" class="btn btn-sm btn-outline-secondary"
+              [disabled]="page() >= totalPages() - 1" (click)="goToPage(page() + 1)">
+        Next
+      </button>
+    </div>
+  }
+}

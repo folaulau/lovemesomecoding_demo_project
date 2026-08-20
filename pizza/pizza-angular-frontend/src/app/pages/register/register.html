@@ -1,0 +1,68 @@
+<div class="container py-5">
+  <div class="card border-0 shadow-sm mx-auto" style="max-width: 26rem">
+    <div class="card-body p-4">
+      <h1 class="h4 fw-bold mb-3">Create an account</h1>
+
+      @if (error(); as message) {
+        <div class="alert alert-danger">{{ message }}</div>
+      }
+
+      <form (ngSubmit)="submit()">
+        <div class="mb-3">
+          <label class="form-label" for="register-name">Full name</label>
+          <input
+            id="register-name"
+            name="fullName"
+            class="form-control"
+            required
+            autocomplete="name"
+            [ngModel]="fullName()"
+            (ngModelChange)="fullName.set($event)"
+          />
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label" for="register-email">Email</label>
+          <input
+            id="register-email"
+            name="email"
+            class="form-control"
+            type="email"
+            required
+            autocomplete="username"
+            [ngModel]="email()"
+            (ngModelChange)="email.set($event)"
+          />
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label" for="register-password">Password</label>
+          <input
+            id="register-password"
+            name="password"
+            class="form-control"
+            type="password"
+            required
+            minlength="8"
+            autocomplete="new-password"
+            [ngModel]="password()"
+            (ngModelChange)="password.set($event)"
+          />
+          <div class="form-text">At least 8 characters.</div>
+        </div>
+
+        <button type="submit" class="btn btn-primary w-100" [disabled]="loading()">
+          {{ loading() ? 'Creating account…' : 'Create account' }}
+        </button>
+      </form>
+
+      <hr />
+      <p class="small text-muted mb-0">
+        Already have an account? <a routerLink="/login">Sign in</a>.
+      </p>
+      <p class="small text-muted mb-0 mt-2">
+        You can also order without an account — just add a pizza and check out.
+      </p>
+    </div>
+  </div>
+</div>

@@ -1,0 +1,47 @@
+<div class="container py-4">
+  <h1 class="h3 fw-bold mb-3">Menu</h1>
+
+  <ul class="nav nav-tabs mb-4">
+    @for (filter of filters; track filter.key) {
+      <li class="nav-item">
+        <button
+          type="button"
+          class="nav-link"
+          [class.active]="activeFilter() === filter.key"
+          [attr.aria-current]="activeFilter() === filter.key ? 'page' : null"
+          (click)="applyFilter(filter.key)"
+        >
+          {{ filter.label }}
+        </button>
+      </li>
+    }
+  </ul>
+
+  @if (loading()) {
+    <app-spinner label="Loading the menu…" />
+  }
+
+  @if (error(); as message) {
+    <div class="alert alert-danger d-flex justify-content-between align-items-center">
+      <span>{{ message }}</span>
+      <button type="button" class="btn btn-sm btn-outline-danger" (click)="reload()">
+        Try again
+      </button>
+    </div>
+  }
+
+  @if (!loading() && !error()) {
+    <div class="row row-cols-1 row-cols-sm-2 row-cols-lg-4 g-4">
+      @for (product of visibleProducts(); track product.id) {
+        <div class="col">
+          <app-product-card [product]="product" (selected)="selectedProduct.set($event)" />
+        </div>
+      }
+    </div>
+  }
+
+  <app-pizza-builder-modal
+    [product]="selectedProduct()"
+    (closed)="selectedProduct.set(null)"
+  />
+</div>

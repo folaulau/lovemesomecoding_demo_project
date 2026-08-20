@@ -1,0 +1,315 @@
+@if (items().length === 0 && !created()) {
+  <div class="container py-5">
+    <div class="alert alert-light text-center border">
+      <h1 class="h5">Your cart is empty</h1>
+      <p class="text-muted">Add a pizza before checking out.</p>
+      <a routerLink="/menu" class="btn btn-primary">Browse the menu</a>
+    </div>
+  </div>
+} @else {
+  <div class="container py-4">
+    <h1 class="h3 fw-bold mb-4">Checkout</h1>
+
+    @if (error(); as message) {
+      <div class="alert alert-danger alert-dismissible">
+        {{ message }}
+        <button type="button" class="btn-close" aria-label="Dismiss" (click)="error.set(null)"></button>
+      </div>
+    }
+
+    <div class="row g-4">
+      <div class="col-lg-7">
+        @if (created(); as order) {
+          <!-- ---------------------------------------------- step 2: pay -->
+          <div class="card border-0 shadow-sm">
+            <div class="card-body">
+              <h2 class="h6 fw-bold text-uppercase text-muted mb-3">Payment</h2>
+
+              @if (order.clientSecret; as secret) {
+                <app-stripe-payment-form
+                  [clientSecret]="secret"
+                  mode="payment"
+                  [total]="order.order.total"
+                  returnPath="/checkout"
+                  (succeeded)="paymentSucceeded()"
+                />
+              } @else {
+                <div class="alert alert-warning mb-0">
+                  The server created order <strong>{{ order.order.id }}</strong> but returned no
+                  Stripe client secret, which means no Stripe key is configured on the backend. Set
+                  <code>pizza.stripe.secret-key</code> in <code>application-local.properties</code>
+                  and run with the <code>local</code> profile.
+                </div>
+              }
+            </div>
+          </div>
+        } @else {
+          <!-- ---------------------------------------------- step 1: details -->
+          <form id="checkout-form" [formGroup]="form" (ngSubmit)="createOrder()">
+            @if (!isAuthenticated()) {
+              <div class="alert alert-light border">
+                Checking out as a guest.
+                <a routerLink="/login" [queryParams]="{ returnUrl: '/checkout' }">Sign in</a>
+                to save this order to your account — entirely optional.
+              </div>
+            }
+
+            <!--
+              Delivery vs pickup, chosen here as well as in the cart drawer. It changes the price
+              (a delivery fee) and which fields are required, so making the customer go back to the
+              drawer to change their mind is needless friction.
+            -->
+            <div class="card mb-4 border-0 shadow-sm">
+              <div class="card-body">
+                <h2 class="h6 fw-bold text-uppercase text-muted mb-3">How would you like it?</h2>
+                <div class="d-flex gap-2 flex-wrap">
+                  <button
+                    type="button"
+                    class="btn"
+                    [class.btn-primary]="isDelivery()"
+                    [class.btn-outline-primary]="!isDelivery()"
+                    [attr.aria-pressed]="isDelivery()"
+                    (click)="setOrderType('DELIVERY')"
+                  >
+                    Delivery
+                    <span class="d-block small fw-normal">{{ 3.99 | money }} fee</span>
+                  </button>
+                  <button
+                    type="button"
+                    class="btn"
+                    [class.btn-primary]="!isDelivery()"
+                    [class.btn-outline-primary]="isDelivery()"
+                    [attr.aria-pressed]="!isDelivery()"
+                    (click)="setOrderType('CARRYOUT')"
+                  >
+                    Pick up
+                    <span class="d-block small fw-normal">No fee</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div class="card mb-4 border-0 shadow-sm">
+              <div class="card-body">
+                <h2 class="h6 fw-bold text-uppercase text-muted mb-3">Contact</h2>
+                <div class="row g-3">
+                  <div class="col-md-6">
+                    <label class="form-label" for="checkout-name">Name</label>
+                    <input
+                      id="checkout-name"
+                      class="form-control"
+                      [class.is-invalid]="invalid('customerName')"
+                      formControlName="customerName"
+                      autocomplete="name"
+                    />
+                    <div class="invalid-feedback">Please tell us who the order is for.</div>
+                  </div>
+                  <div class="col-md-6">
+                    <label class="form-label" for="checkout-email">Email</label>
+                    <input
+                      id="checkout-email"
+                      type="email"
+                      class="form-control"
+                      [class.is-invalid]="invalid('email')"
+                      formControlName="email"
+                      autocomplete="email"
+                    />
+                    <div class="invalid-feedback">We need a valid email to send the receipt.</div>
+                  </div>
+                  <div class="col-md-6">
+                    <label class="form-label" for="checkout-phone">Phone</label>
+                    <input
+                      id="checkout-phone"
+                      type="tel"
+                      class="form-control"
+                      formControlName="phone"
+                      autocomplete="tel"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Address fields only exist for delivery. -->
+            @if (isDelivery()) {
+              <div class="card mb-4 border-0 shadow-sm">
+                <div class="card-body">
+                  <h2 class="h6 fw-bold text-uppercase text-muted mb-3">Delivery address</h2>
+
+                  <!-- Saved addresses, primary preselected. Guests never see this. -->
+                  @if (addresses().length > 0) {
+                    <div class="mb-3">
+                      @for (address of addresses(); track address.id) {
+                        <div class="form-check">
+                          <input
+                            class="form-check-input"
+                            type="radio"
+                            name="savedAddress"
+                            [id]="'address-' + address.id"
+                            [checked]="selectedAddressId() === address.id"
+                            (change)="selectedAddressId.set(address.id)"
+                          />
+                          <label class="form-check-label" [for]="'address-' + address.id">
+                            <span class="fw-semibold">{{ address.label || 'Address' }}</span>
+                            @if (address.primary) {
+                              <span class="badge bg-success ms-2">primary</span>
+                            }
+                            <span class="d-block text-muted small">
+                              {{ address.line1 }}, {{ address.city }}, {{ address.state }}
+                              {{ address.postalCode }}
+                            </span>
+                          </label>
+                        </div>
+                      }
+                      <div class="form-check">
+                        <input
+                          class="form-check-input"
+                          type="radio"
+                          name="savedAddress"
+                          id="address-new"
+                          [checked]="usingNewAddress()"
+                          (change)="selectedAddressId.set(NEW_ADDRESS)"
+                        />
+                        <label class="form-check-label" for="address-new">
+                          Use a different address
+                        </label>
+                      </div>
+                    </div>
+                  }
+
+                  @if (usingNewAddress()) {
+                    <div class="row g-3">
+                      <div class="col-12">
+                        <label class="form-label" for="checkout-address">Street address</label>
+                        <input
+                          id="checkout-address"
+                          class="form-control"
+                          [class.is-invalid]="invalid('addressLine1')"
+                          formControlName="addressLine1"
+                          autocomplete="address-line1"
+                        />
+                        <div class="invalid-feedback">
+                          We cannot deliver without a street address.
+                        </div>
+                      </div>
+                      <div class="col-md-5">
+                        <label class="form-label" for="checkout-city">City</label>
+                        <input
+                          id="checkout-city"
+                          class="form-control"
+                          [class.is-invalid]="invalid('city')"
+                          formControlName="city"
+                          autocomplete="address-level2"
+                        />
+                      </div>
+                      <div class="col-md-3">
+                        <label class="form-label" for="checkout-state">State</label>
+                        <input
+                          id="checkout-state"
+                          class="form-control"
+                          [class.is-invalid]="invalid('state')"
+                          formControlName="state"
+                          autocomplete="address-level1"
+                        />
+                      </div>
+                      <div class="col-md-4">
+                        <label class="form-label" for="checkout-zip">ZIP</label>
+                        <input
+                          id="checkout-zip"
+                          class="form-control"
+                          [class.is-invalid]="invalid('postalCode')"
+                          formControlName="postalCode"
+                          autocomplete="postal-code"
+                        />
+                        <div class="invalid-feedback">Five digits, please.</div>
+                      </div>
+                    </div>
+                  }
+                </div>
+              </div>
+            }
+          </form>
+        }
+      </div>
+
+      <div class="col-lg-5">
+        <div class="card border-0 shadow-sm sticky-summary">
+          <div class="card-body">
+            <h2 class="h6 fw-bold text-uppercase text-muted mb-3">
+              Order summary · {{ orderType() | humanise }}
+            </h2>
+
+            @if (created(); as response) {
+              @for (item of response.order.items; track item.id) {
+                <div class="d-flex justify-content-between small mb-2">
+                  <span>
+                    {{ item.quantity }} × {{ item.productName }}
+                    <span class="text-muted">
+                      ({{ item.size | humanise }}{{ item.crustName ? ', ' + item.crustName : '' }})
+                    </span>
+                  </span>
+                  <span>{{ item.lineTotal | money }}</span>
+                </div>
+              }
+            } @else {
+              @for (item of items(); track item.lineId) {
+                <div class="d-flex justify-content-between small mb-2">
+                  <span>
+                    {{ item.quantity }} × {{ item.productName }}
+                    <span class="text-muted">
+                      ({{ item.size | humanise }}{{ item.crustName ? ', ' + item.crustName : '' }})
+                    </span>
+                  </span>
+                  <span>{{ line(item) | money }}</span>
+                </div>
+              }
+            }
+
+            <hr />
+
+            <!-- Once the order exists, these are the SERVER's figures — they are the real ones. -->
+            <div class="d-flex justify-content-between small">
+              <span>Subtotal</span>
+              <span>{{ money().subtotal | money }}</span>
+            </div>
+            <div class="d-flex justify-content-between small">
+              <span>Tax</span>
+              <span>{{ money().tax | money }}</span>
+            </div>
+            @if (money().deliveryFee > 0) {
+              <div class="d-flex justify-content-between small">
+                <span>Delivery</span>
+                <span>{{ money().deliveryFee | money }}</span>
+              </div>
+            }
+            <div class="d-flex justify-content-between fw-bold fs-5 mt-2">
+              <span>Total</span>
+              <span>{{ money().total | money }}</span>
+            </div>
+
+            @if (created(); as response) {
+              <p class="small text-muted mt-3 mb-0">
+                Order <code>{{ response.order.id }}</code> is reserved. It is not paid until the
+                card is confirmed.
+              </p>
+            } @else {
+              <button
+                type="submit"
+                form="checkout-form"
+                class="btn btn-primary btn-lg w-100 mt-3"
+                [disabled]="submitting()"
+              >
+                @if (submitting()) {
+                  <span class="spinner-border spinner-border-sm me-2"></span>
+                  Creating order…
+                } @else {
+                  Continue to payment
+                }
+              </button>
+            }
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+}

@@ -1,0 +1,224 @@
+@if (loading()) {
+  <div class="container py-5"><app-spinner label="Loading your profile…" /></div>
+} @else {
+  <div class="container py-4">
+    <h1 class="h3 fw-bold mb-1">Profile</h1>
+    <p class="text-muted">{{ user()?.email }}</p>
+
+    @if (error(); as message) {
+      <div class="alert alert-danger">{{ message }}</div>
+    }
+
+    <div class="row g-4">
+      <!-- ------------------------------------------------------- account -->
+      <div class="col-lg-4">
+        <div class="card border-0 shadow-sm">
+          <div class="card-body">
+            <h2 class="h6 fw-bold text-uppercase text-muted mb-3">Account</h2>
+            <dl class="mb-0 small">
+              <dt class="text-muted fw-normal">Name</dt>
+              <dd class="fw-semibold">{{ user()?.fullName ?? '—' }}</dd>
+              <dt class="text-muted fw-normal">Email</dt>
+              <dd class="fw-semibold">{{ user()?.email }}</dd>
+              <dt class="text-muted fw-normal">Role</dt>
+              <dd class="mb-0">
+                <span class="badge" [class.bg-primary]="user()?.role === 'ADMIN'"
+                      [class.bg-secondary]="user()?.role !== 'ADMIN'">
+                  {{ user()?.role }}
+                </span>
+              </dd>
+            </dl>
+          </div>
+        </div>
+      </div>
+
+      <!-- ----------------------------------------------------- addresses -->
+      <div class="col-lg-8">
+        <div class="card border-0 shadow-sm mb-4">
+          <div class="card-body">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+              <h2 class="h6 fw-bold text-uppercase text-muted mb-0">Delivery addresses</h2>
+              <button type="button" class="btn btn-sm btn-primary" (click)="openCreate()">
+                Add address
+              </button>
+            </div>
+
+            <ul class="list-group list-group-flush">
+              @for (address of addresses(); track address.id) {
+                <li class="list-group-item px-0">
+                  <div class="d-flex justify-content-between align-items-start gap-3">
+                    <div>
+                      <div class="fw-semibold">
+                        {{ address.label || 'Address' }}
+                        @if (address.primary) {
+                          <span class="badge bg-success">primary</span>
+                        }
+                      </div>
+                      <div class="small text-muted">{{ describe(address) }}</div>
+                      @if (address.phone) {
+                        <div class="small text-muted">{{ address.phone }}</div>
+                      }
+                    </div>
+                    <div class="text-nowrap">
+                      @if (!address.primary) {
+                        <button type="button" class="btn btn-sm btn-outline-primary"
+                                (click)="makeAddressPrimary(address)">
+                          Make primary
+                        </button>
+                      }
+                      <button type="button" class="btn btn-sm btn-outline-secondary"
+                              (click)="openEdit(address)">
+                        Edit
+                      </button>
+                      <button type="button" class="btn btn-sm btn-outline-danger"
+                              (click)="deleteAddress(address)">
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                </li>
+              } @empty {
+                <p class="text-muted small mb-0">
+                  No saved addresses yet. Add one and it will be offered at checkout.
+                </p>
+              }
+            </ul>
+          </div>
+        </div>
+
+        <!-- ------------------------------------------------ payment methods -->
+        <div class="card border-0 shadow-sm">
+          <div class="card-body">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+              <h2 class="h6 fw-bold text-uppercase text-muted mb-0">Payment methods</h2>
+              @if (!setupSecret()) {
+                <button type="button" class="btn btn-sm btn-primary" (click)="startAddingCard()">
+                  Add card
+                </button>
+              }
+            </div>
+
+            <!-- Worth stating plainly on the page itself: we do not hold the card. Stripe does. -->
+            <p class="small text-muted">
+              Cards are stored by Stripe. We keep only the brand and last four digits so you can
+              tell them apart — never the card number.
+            </p>
+
+            @if (cardError(); as message) {
+              <div class="alert alert-danger">{{ message }}</div>
+            }
+
+            @if (setupSecret(); as secret) {
+              <app-stripe-payment-form
+                [clientSecret]="secret"
+                mode="setup"
+                returnPath="/profile"
+                (succeeded)="cardCollected($event)"
+                (cancelled)="setupSecret.set(null)"
+              />
+            } @else {
+              <ul class="list-group list-group-flush">
+                @for (method of methods(); track method.id) {
+                  <li class="list-group-item px-0">
+                    <div class="d-flex justify-content-between align-items-center gap-3">
+                      <div>
+                        <span class="fw-semibold text-capitalize">{{ method.brand ?? 'Card' }}</span>
+                        ending {{ method.last4 ?? '••••' }}
+                        @if (method.primary) {
+                          <span class="badge bg-success">primary</span>
+                        }
+                        <div class="small text-muted">Expires {{ expiry(method) }}</div>
+                      </div>
+                      <div class="text-nowrap">
+                        @if (!method.primary) {
+                          <button type="button" class="btn btn-sm btn-outline-primary"
+                                  (click)="makeCardPrimary(method)">
+                            Make primary
+                          </button>
+                        }
+                        <button type="button" class="btn btn-sm btn-outline-danger"
+                                (click)="deleteCard(method)">
+                          Remove
+                        </button>
+                      </div>
+                    </div>
+                  </li>
+                } @empty {
+                  <p class="text-muted small mb-0">No saved cards yet.</p>
+                }
+              </ul>
+            }
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+}
+
+<!-- --------------------------------------------------- address modal -->
+<app-modal [open]="editing() !== null" (closed)="editing.set(null)">
+  <span modal-title>{{ editing() === 'new' ? 'New address' : 'Edit address' }}</span>
+
+  <div modal-body>
+    <form id="address-form" [formGroup]="form" (ngSubmit)="saveAddress()">
+      @if (formError(); as message) {
+        <div class="alert alert-danger">{{ message }}</div>
+      }
+
+      <div class="row g-3">
+        <div class="col-md-6">
+          <label class="form-label" for="addr-label">Label</label>
+          <input id="addr-label" class="form-control" placeholder="Home" formControlName="label" />
+        </div>
+        <div class="col-md-6">
+          <label class="form-label" for="addr-phone">Phone</label>
+          <input id="addr-phone" class="form-control" formControlName="phone" />
+        </div>
+        <div class="col-12">
+          <label class="form-label" for="addr-line1">Street address</label>
+          <input id="addr-line1" class="form-control" [class.is-invalid]="invalid('line1')"
+                 formControlName="line1" />
+          <div class="invalid-feedback">
+            {{ fieldError('line1') ?? 'A street address is required.' }}
+          </div>
+        </div>
+        <div class="col-md-5">
+          <label class="form-label" for="addr-city">City</label>
+          <input id="addr-city" class="form-control" [class.is-invalid]="invalid('city')"
+                 formControlName="city" />
+        </div>
+        <div class="col-md-3">
+          <label class="form-label" for="addr-state">State</label>
+          <input id="addr-state" class="form-control" [class.is-invalid]="invalid('state')"
+                 formControlName="state" />
+        </div>
+        <div class="col-md-4">
+          <label class="form-label" for="addr-zip">ZIP</label>
+          <input id="addr-zip" class="form-control" [class.is-invalid]="invalid('postalCode')"
+                 formControlName="postalCode" />
+          <div class="invalid-feedback">
+            {{ fieldError('postalCode') ?? 'Five digits, please.' }}
+          </div>
+        </div>
+        <div class="col-12">
+          <div class="form-check form-switch">
+            <input class="form-check-input" type="checkbox" id="addr-primary"
+                   formControlName="primary" />
+            <label class="form-check-label" for="addr-primary">
+              Use this address by default at checkout
+            </label>
+          </div>
+        </div>
+      </div>
+    </form>
+  </div>
+
+  <div modal-footer>
+    <button type="button" class="btn btn-outline-secondary" (click)="editing.set(null)">
+      Cancel
+    </button>
+    <button type="submit" form="address-form" class="btn btn-primary" [disabled]="saving()">
+      {{ saving() ? 'Saving…' : 'Save address' }}
+    </button>
+  </div>
+</app-modal>

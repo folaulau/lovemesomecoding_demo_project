@@ -1,0 +1,144 @@
+<div class="container py-5">
+  <div class="card border-0 shadow-sm mx-auto" style="max-width: 38rem">
+    <div class="card-body p-4">
+      <div class="text-center">
+        <div class="display-4 mb-2" aria-hidden="true">🍕</div>
+        <h1 class="h4 fw-bold">
+          {{ order()?.status === 'PENDING_PAYMENT' ? 'Confirming your payment…' : 'Order confirmed' }}
+        </h1>
+      </div>
+
+      @if (error(); as message) {
+        <div class="alert alert-danger">{{ message }}</div>
+      }
+
+      @if (!order() && !error()) {
+        <app-spinner label="Loading your order…" />
+      }
+
+      @if (order(); as order) {
+        <p class="text-muted text-center">
+          Order <strong>{{ order.id }}</strong>
+          <br />
+          <span class="badge bg-{{ variant(order.status) }} mt-2">{{ order.status | humanise }}</span>
+        </p>
+
+        @if (order.status === 'PENDING_PAYMENT') {
+          @if (!settled()) {
+            <div class="alert alert-light border d-flex align-items-center gap-2">
+              <span class="spinner-border spinner-border-sm"></span>
+              <span class="small">
+                Waiting for the payment to settle. This page checks with Stripe every couple of
+                seconds.
+              </span>
+            </div>
+          } @else {
+            <div class="alert alert-warning small">
+              Still pending. If you completed the card form, the confirmation may just be delayed —
+              run <code>stripe listen --forward-to localhost:8085/api/webhooks/stripe</code>
+              locally, or refresh this page in a moment.
+            </div>
+          }
+        }
+
+        <!--
+          Where it is going, and what paid for it. Both come from the order the SERVER returns —
+          the browser is not remembering anything from checkout.
+        -->
+        <div class="row g-3 mb-3">
+          @if (order.orderType === 'DELIVERY' && order.addressLine1) {
+            <div class="col-sm-6">
+              <div class="text-muted small text-uppercase">Delivering to</div>
+              <div class="small">
+                {{ order.customerName }}<br />
+                {{ order.addressLine1 }}<br />
+                @if (order.addressLine2) {
+                  {{ order.addressLine2 }}<br />
+                }
+                {{ order.city }}, {{ order.state }} {{ order.postalCode }}
+                @if (order.phone) {
+                  <br />{{ order.phone }}
+                }
+              </div>
+            </div>
+          }
+
+          @if (order.orderType === 'CARRYOUT') {
+            <div class="col-sm-6">
+              <div class="text-muted small text-uppercase">Collection</div>
+              <div class="small">
+                Carryout — {{ order.customerName }}
+                @if (order.phone) {
+                  <br />{{ order.phone }}
+                }
+              </div>
+            </div>
+          }
+
+          <div class="col-sm-6">
+            <div class="text-muted small text-uppercase">Paid with</div>
+            <div class="small">
+              @if (order.cardLast4) {
+                <span class="text-capitalize">{{ order.cardBrand ?? 'Card' }}</span> ending
+                <strong>{{ order.cardLast4 }}</strong>
+              } @else if (order.cardBrand) {
+                <!--
+                  A wallet — Link, Cash App Pay, Klarna. Stripe exposes no card brand or last4 for
+                  these, so naming the method is the honest thing to show.
+                -->
+                <span class="text-capitalize">{{ order.cardBrand }}</span>
+              } @else if (order.status === 'PENDING_PAYMENT') {
+                Awaiting payment
+              } @else {
+                <!-- Seeded demo orders have no real Stripe payment behind them. -->
+                <span class="text-muted">Not recorded</span>
+              }
+            </div>
+          </div>
+        </div>
+
+        <ul class="list-group list-group-flush mb-3">
+          @for (item of order.items; track item.id) {
+            <li class="list-group-item px-0">
+              <div class="d-flex justify-content-between">
+                <span>
+                  {{ item.quantity }} × {{ item.productName }}
+                  <span class="text-muted small">
+                    ({{ item.size | humanise }}{{ item.crustName ? ', ' + item.crustName : '' }})
+                  </span>
+                </span>
+                <span>{{ item.lineTotal | money }}</span>
+              </div>
+              @if (item.toppings.length > 0) {
+                <div class="small text-muted">{{ toppingNames(item.toppings) }}</div>
+              }
+            </li>
+          }
+        </ul>
+
+        <div class="d-flex justify-content-between small">
+          <span>Subtotal</span>
+          <span>{{ order.subtotal | money }}</span>
+        </div>
+        <div class="d-flex justify-content-between small">
+          <span>Tax</span>
+          <span>{{ order.tax | money }}</span>
+        </div>
+        @if (order.deliveryFee > 0) {
+          <div class="d-flex justify-content-between small">
+            <span>Delivery</span>
+            <span>{{ order.deliveryFee | money }}</span>
+          </div>
+        }
+        <div class="d-flex justify-content-between fw-bold fs-5 mt-2 mb-3">
+          <span>Total</span>
+          <span>{{ order.total | money }}</span>
+        </div>
+
+        <div class="text-center">
+          <a routerLink="/menu" class="btn btn-primary">Order something else</a>
+        </div>
+      }
+    </div>
+  </div>
+</div>

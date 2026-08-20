@@ -1,0 +1,103 @@
+@if (loading() && toppings().length === 0) {
+  <app-spinner label="Loading toppings…" />
+} @else {
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h2 class="h5 fw-bold mb-0">Toppings · {{ toppings().length }}</h2>
+    <button type="button" class="btn btn-primary" (click)="open('new')">Add topping</button>
+  </div>
+
+  @if (error(); as message) {
+    <div class="alert alert-danger">{{ message }}</div>
+  }
+
+  <div class="card border-0 shadow-sm">
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-hover mb-0 align-middle">
+          <thead>
+            <tr>
+              <th class="ps-3">Name</th>
+              <th>Category</th>
+              <th>Price</th>
+              <th>Status</th>
+              <th class="text-end pe-3">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (topping of toppings(); track topping.id) {
+              <tr>
+                <td class="ps-3 fw-semibold">{{ topping.name }}</td>
+                <td class="small text-muted">{{ label(topping.category) }}</td>
+                <td>{{ topping.price | money }}</td>
+                <td>
+                  @if (topping.active) {
+                    <span class="badge bg-success">active</span>
+                  } @else {
+                    <span class="badge bg-warning text-dark">hidden</span>
+                  }
+                </td>
+                <td class="text-end pe-3">
+                  <button type="button" class="btn btn-sm btn-outline-secondary"
+                          (click)="open(topping)">Edit</button>
+                  <button type="button" class="btn btn-sm btn-outline-danger"
+                          (click)="remove(topping)">Delete</button>
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+}
+
+<app-modal [open]="editing() !== null" (closed)="editing.set(null)">
+  <span modal-title>
+    {{ editing() === 'new' ? 'New topping' : 'Edit ' + form.controls.name.value }}
+  </span>
+
+  <div modal-body>
+    <form id="topping-form" [formGroup]="form" (ngSubmit)="save()">
+      @if (formError(); as message) {
+        <div class="alert alert-danger">{{ message }}</div>
+      }
+
+      <div class="row g-3">
+        <div class="col-12">
+          <label class="form-label" for="topping-name">Name</label>
+          <input id="topping-name" class="form-control" formControlName="name"
+                 [class.is-invalid]="fieldError('name')" />
+          <div class="invalid-feedback">{{ fieldError('name') }}</div>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label" for="topping-price">Price</label>
+          <input id="topping-price" class="form-control" type="number" min="0" step="0.25"
+                 formControlName="price" [class.is-invalid]="fieldError('price')" />
+          <div class="invalid-feedback">{{ fieldError('price') }}</div>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label" for="topping-category">Category</label>
+          <select id="topping-category" class="form-select" formControlName="category">
+            @for (category of categories; track category) {
+              <option [value]="category">{{ label(category) }}</option>
+            }
+          </select>
+        </div>
+        <div class="col-12">
+          <div class="form-check form-switch">
+            <input class="form-check-input" type="checkbox" id="topping-active"
+                   formControlName="active" />
+            <label class="form-check-label" for="topping-active">Available in the builder</label>
+          </div>
+        </div>
+      </div>
+    </form>
+  </div>
+
+  <div modal-footer>
+    <button type="button" class="btn btn-outline-secondary" (click)="editing.set(null)">Cancel</button>
+    <button type="submit" form="topping-form" class="btn btn-primary" [disabled]="saving()">
+      {{ saving() ? 'Saving…' : 'Save topping' }}
+    </button>
+  </div>
+</app-modal>

@@ -1,0 +1,88 @@
+<!--
+  `loading && none yet` rather than plain `loading`. Store state starts empty and the flag only
+  flips once the action is dispatched, so keying purely off loading would flash an empty table for a
+  frame. It also means a REFRESH updates in place instead of replacing the list with a spinner.
+-->
+@if (loading() && users().length === 0) {
+  <app-spinner label="Loading users…" />
+} @else {
+  <h2 class="h5 fw-bold mb-3">Users · {{ users().length }}</h2>
+
+  @if (error(); as message) {
+    <div class="alert alert-danger">{{ message }}</div>
+  }
+
+  <div class="alert alert-light border small">
+    Accounts are created by people signing up — there is no "add user" here. What an admin can do is
+    change a role or remove an account. Deleting is a <strong>soft delete</strong>: past orders still
+    reference the row, and an order has to keep reading correctly long after the customer has gone.
+  </div>
+
+  <div class="card border-0 shadow-sm">
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-hover mb-0 align-middle">
+          <thead>
+            <tr>
+              <th class="ps-3">User</th>
+              <th>Role</th>
+              <th class="text-end">Orders</th>
+              <th class="text-end">Addresses</th>
+              <th class="text-end">Cards</th>
+              <th>Joined</th>
+              <th class="text-end pe-3">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (row of users(); track row.id) {
+              @let self = isSelf(row);
+              <tr>
+                <td class="ps-3">
+                  <div class="fw-semibold">
+                    {{ row.fullName ?? '—' }}
+                    @if (self) {
+                      <span class="badge bg-info text-dark">you</span>
+                    }
+                  </div>
+                  <div class="text-muted small">{{ row.email }}</div>
+                </td>
+                <td>
+                  <span class="badge" [class.bg-primary]="row.role === 'ADMIN'"
+                        [class.bg-secondary]="row.role !== 'ADMIN'">
+                    {{ row.role.toLowerCase() }}
+                  </span>
+                </td>
+                <td class="text-end">{{ row.orderCount }}</td>
+                <td class="text-end">{{ row.addressCount }}</td>
+                <td class="text-end">{{ row.paymentMethodCount }}</td>
+                <td class="small">{{ row.createdAt | date: 'mediumDate' }}</td>
+                <td class="text-end pe-3">
+                  <select
+                    class="form-select form-select-sm d-inline-block w-auto"
+                    style="min-width: 9rem"
+                    [attr.aria-label]="'Role for ' + row.email"
+                    [disabled]="self"
+                    [value]="row.role"
+                    (change)="changeRole(row, $any($event.target).value)"
+                  >
+                    <option value="CUSTOMER" [selected]="row.role === 'CUSTOMER'">customer</option>
+                    <option value="ADMIN" [selected]="row.role === 'ADMIN'">admin</option>
+                  </select>
+                  <button
+                    type="button"
+                    class="btn btn-sm btn-outline-danger"
+                    [disabled]="self"
+                    [attr.title]="self ? 'You cannot delete your own account' : null"
+                    (click)="remove(row)"
+                  >
+                    Delete
+                  </button>
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+}

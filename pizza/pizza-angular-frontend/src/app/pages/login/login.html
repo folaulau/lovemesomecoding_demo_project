@@ -1,0 +1,57 @@
+<div class="container py-5">
+  <div class="card border-0 shadow-sm mx-auto" style="max-width: 26rem">
+    <div class="card-body p-4">
+      <h1 class="h4 fw-bold mb-3">Sign in</h1>
+
+      @if (error(); as message) {
+        <div class="alert alert-danger">{{ message }}</div>
+      }
+
+      <form (ngSubmit)="submit()">
+        <div class="mb-3">
+          <label class="form-label" for="login-email">Email</label>
+          <input
+            id="login-email"
+            name="email"
+            class="form-control"
+            type="email"
+            required
+            autocomplete="username"
+            [ngModel]="email()"
+            (ngModelChange)="email.set($event)"
+          />
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label" for="login-password">Password</label>
+          <input
+            id="login-password"
+            name="password"
+            class="form-control"
+            type="password"
+            required
+            autocomplete="current-password"
+            [ngModel]="password()"
+            (ngModelChange)="password.set($event)"
+          />
+        </div>
+
+        <button type="submit" class="btn btn-primary w-100" [disabled]="loading()">
+          {{ loading() ? 'Signing in…' : 'Sign in' }}
+        </button>
+      </form>
+
+      <hr />
+      <p class="small text-muted mb-2">
+        No account yet? <a routerLink="/register">Create one</a>.
+      </p>
+      <p class="small text-muted mb-0">
+        Demo accounts — <code>customer&#64;pizza.test</code> / <code>pizza123</code> and
+        <code>admin&#64;pizza.test</code> / <code>admin123</code>.
+      </p>
+      <p class="small text-muted mb-0 mt-2">
+        You never have to sign in to order: checkout works as a guest.
+      </p>
+    </div>
+  </div>
+</div>

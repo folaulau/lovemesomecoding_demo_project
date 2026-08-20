@@ -1,0 +1,134 @@
+@if (open()) {
+  <div class="offcanvas-backdrop fade show" (click)="closed.emit()"></div>
+}
+
+<div
+  class="offcanvas offcanvas-end"
+  [class.show]="open()"
+  tabindex="-1"
+  role="dialog"
+  [attr.aria-modal]="open() ? 'true' : null"
+  aria-labelledby="cart-drawer-title"
+  (keydown.escape)="closed.emit()"
+>
+  <div class="offcanvas-header">
+    <h2 class="offcanvas-title h5" id="cart-drawer-title">Your order</h2>
+    <button type="button" class="btn-close" aria-label="Close" (click)="closed.emit()"></button>
+  </div>
+
+  <div class="offcanvas-body d-flex flex-column">
+    <div class="btn-group mb-3 w-100" role="group" aria-label="Delivery or carryout">
+      <button
+        type="button"
+        class="btn"
+        [class.btn-primary]="orderType() === 'DELIVERY'"
+        [class.btn-outline-primary]="orderType() !== 'DELIVERY'"
+        (click)="setOrderType('DELIVERY')"
+      >
+        Delivery
+      </button>
+      <button
+        type="button"
+        class="btn"
+        [class.btn-primary]="orderType() === 'CARRYOUT'"
+        [class.btn-outline-primary]="orderType() !== 'CARRYOUT'"
+        (click)="setOrderType('CARRYOUT')"
+      >
+        Carryout
+      </button>
+    </div>
+
+    <!--
+      ANGULAR CONCEPT: @empty.
+
+      The `items.length === 0 ? … : …` ternary the React version needs is built into the loop here.
+      One block describes both states, so they cannot drift apart.
+    -->
+    @for (item of items(); track item.lineId) {
+      <div class="border-bottom pb-3 mb-3">
+        <div class="d-flex justify-content-between">
+          <div class="pe-2">
+            <div class="fw-semibold">{{ item.productName }}</div>
+            <div class="small text-muted">{{ describe(item) }}</div>
+
+            @if (item.toppings.length > 0) {
+              <div class="mt-1 d-flex flex-wrap gap-1">
+                @for (topping of item.toppings; track topping.id) {
+                  <span class="badge bg-light text-dark">{{ topping.name }}</span>
+                }
+              </div>
+            }
+
+            <div class="small text-muted mt-1">{{ unit(item) | money }} each</div>
+          </div>
+          <div class="text-end">
+            <div class="fw-bold">{{ line(item) | money }}</div>
+          </div>
+        </div>
+
+        <div class="d-flex align-items-center gap-2 mt-2">
+          <div class="btn-group btn-group-sm">
+            <button
+              type="button"
+              class="btn btn-outline-secondary"
+              [attr.aria-label]="'Decrease quantity of ' + item.productName"
+              (click)="setQuantity(item.lineId, item.quantity - 1)"
+            >
+              −
+            </button>
+            <button type="button" class="btn btn-outline-secondary" disabled style="min-width: 2.5rem">
+              {{ item.quantity }}
+            </button>
+            <button
+              type="button"
+              class="btn btn-outline-secondary"
+              [attr.aria-label]="'Increase quantity of ' + item.productName"
+              (click)="setQuantity(item.lineId, item.quantity + 1)"
+            >
+              +
+            </button>
+          </div>
+          <button
+            type="button"
+            class="btn btn-sm btn-link text-danger text-decoration-none"
+            (click)="removeItem(item.lineId)"
+          >
+            Remove
+          </button>
+        </div>
+      </div>
+    } @empty {
+      <div class="text-center text-muted py-5">
+        <div class="display-6 mb-2">🍕</div>
+        <p class="mb-0">Your cart is empty.</p>
+      </div>
+    }
+
+    @if (items().length > 0) {
+      <div class="border-top pt-3 mt-auto">
+        <div class="d-flex justify-content-between small">
+          <span>Subtotal</span>
+          <span>{{ totals().subtotal | money }}</span>
+        </div>
+        <div class="d-flex justify-content-between small">
+          <span>Tax</span>
+          <span>{{ totals().tax | money }}</span>
+        </div>
+        @if (totals().deliveryFee > 0) {
+          <div class="d-flex justify-content-between small">
+            <span>Delivery</span>
+            <span>{{ totals().deliveryFee | money }}</span>
+          </div>
+        }
+        <div class="d-flex justify-content-between fw-bold fs-5 mt-2">
+          <span>Total</span>
+          <span>{{ totals().total | money }}</span>
+        </div>
+
+        <button type="button" class="btn btn-primary w-100 mt-3" (click)="goToCheckout()">
+          Checkout
+        </button>
+      </div>
+    }
+  </div>
+</div>

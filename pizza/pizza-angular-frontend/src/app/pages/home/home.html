@@ -1,0 +1,48 @@
+<section class="pizza-hero">
+  <div class="container">
+    <div class="row align-items-center g-4">
+      <div class="col-lg-7">
+        <h1 class="display-4">No One OutPizzas the Hub</h1>
+        <p class="lead mb-4">
+          Hand-stretched dough, real mozzarella, and toppings piled on until it stops being
+          sensible. Delivery or carryout, in about 25 minutes.
+        </p>
+        <div class="d-flex gap-2 flex-wrap">
+          <a routerLink="/menu" class="btn btn-primary btn-lg">Order now</a>
+          <a routerLink="/menu" [queryParams]="{ type: 'DRINK' }" class="btn btn-outline-light btn-lg">
+            Add a drink
+          </a>
+        </div>
+      </div>
+      <div class="col-lg-5 text-center d-none d-lg-block">
+        <div style="font-size: 10rem; line-height: 1" aria-hidden="true">🍕</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="container py-5">
+  <h2 class="h4 fw-bold mb-4">Popular right now</h2>
+
+  @if (loading()) {
+    <app-spinner label="Loading the menu…" />
+  } @else {
+    <div class="row row-cols-1 row-cols-md-3 g-4">
+      @for (pizza of featured(); track pizza.id) {
+        <div class="col">
+          <div class="card product-card">
+            <div class="product-thumb" aria-hidden="true">🍕</div>
+            <div class="card-body">
+              <h3 class="card-title h6 fw-bold">{{ pizza.name }}</h3>
+              <p class="card-text text-muted small">{{ pizza.description }}</p>
+              <div class="d-flex justify-content-between align-items-center">
+                <span class="fw-bold text-pizza-red">from {{ cheapest(pizza.sizes) | money }}</span>
+                <a routerLink="/menu" class="btn btn-outline-primary btn-sm">Build it</a>
+              </div>
+            </div>
+          </div>
+        </div>
+      }
+    </div>
+  }
+</div>

@@ -1,0 +1,105 @@
+<nav class="navbar navbar-expand-lg pizza-navbar sticky-top" data-bs-theme="dark">
+  <div class="container">
+    <a class="navbar-brand pizza-brand" routerLink="/" (click)="closeMenus()">
+      Pizza<span>Hub</span>
+    </a>
+
+    <button
+      class="navbar-toggler"
+      type="button"
+      aria-controls="main-nav"
+      [attr.aria-expanded]="navOpen()"
+      aria-label="Toggle navigation"
+      (click)="toggleNav()"
+    >
+      <span class="navbar-toggler-icon"></span>
+    </button>
+
+    <div id="main-nav" class="collapse navbar-collapse" [class.show]="navOpen()">
+      <ul class="navbar-nav me-auto">
+        <li class="nav-item">
+          <a
+            class="nav-link"
+            routerLink="/menu"
+            routerLinkActive="active"
+            [routerLinkActiveOptions]="{ exact: true }"
+            (click)="closeMenus()"
+            >Menu</a
+          >
+        </li>
+        <li class="nav-item">
+          <a
+            class="nav-link"
+            routerLink="/menu"
+            [queryParams]="{ type: 'PIZZA' }"
+            routerLinkActive="active"
+            (click)="closeMenus()"
+            >Pizzas</a
+          >
+        </li>
+        <li class="nav-item">
+          <a
+            class="nav-link"
+            routerLink="/menu"
+            [queryParams]="{ type: 'DRINK' }"
+            routerLinkActive="active"
+            (click)="closeMenus()"
+            >Drinks</a
+          >
+        </li>
+
+        <!-- ANGULAR CONCEPT: @if replaces `{isAdmin && …}`. It removes the node from the DOM
+             entirely rather than rendering nothing, and unlike the old *ngIf it needs no import. -->
+        @if (isAdmin()) {
+          <li class="nav-item">
+            <a class="nav-link" routerLink="/admin" routerLinkActive="active" (click)="closeMenus()"
+              >Admin</a
+            >
+          </li>
+        }
+      </ul>
+
+      <ul class="navbar-nav align-items-lg-center gap-2">
+        @if (isAuthenticated()) {
+          <li class="nav-item dropdown">
+            <button
+              class="nav-link dropdown-toggle btn btn-link"
+              type="button"
+              id="account-menu"
+              [attr.aria-expanded]="accountOpen()"
+              (click)="toggleAccount()"
+            >
+              {{ displayName() }}
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end" [class.show]="accountOpen()">
+              <li><a class="dropdown-item" routerLink="/profile" (click)="closeMenus()">Profile</a></li>
+              <li><a class="dropdown-item" routerLink="/orders" (click)="closeMenus()">My orders</a></li>
+              <li><hr class="dropdown-divider" /></li>
+              <li><button class="dropdown-item" type="button" (click)="logout()">Sign out</button></li>
+            </ul>
+          </li>
+        } @else {
+          <li class="nav-item">
+            <a class="nav-link" routerLink="/login" routerLinkActive="active" (click)="closeMenus()"
+              >Sign in</a
+            >
+          </li>
+        }
+
+        <li class="nav-item">
+          <button
+            type="button"
+            class="btn btn-primary position-relative"
+            [attr.aria-label]="'Open cart, ' + itemCount() + ' items'"
+            (click)="openCart.emit()"
+          >
+            Cart
+            @if (itemCount() > 0) {
+              <span class="badge rounded-pill bg-light text-dark cart-badge">{{ itemCount() }}</span>
+            }
+          </button>
+        </li>
+      </ul>
+    </div>
+  </div>
+</nav>

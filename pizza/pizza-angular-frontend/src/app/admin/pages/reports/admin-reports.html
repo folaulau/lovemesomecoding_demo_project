@@ -1,0 +1,115 @@
+@if (loading() && !report()) {
+  <app-spinner label="Loading reports…" />
+} @else if (error() && !report()) {
+  <!-- Only surrender the screen to an error if there is nothing cached to show. A failed
+       background refresh must not wipe out a report the admin is already reading. -->
+  <div class="alert alert-danger">{{ error() }}</div>
+} @else if (report(); as report) {
+  <div class="viz-root">
+    <!-- Filters sit in one row above the charts, per the interaction spec. -->
+    <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+      <h2 class="h5 fw-bold mb-0">Sales reports</h2>
+      <div class="btn-group btn-group-sm" role="group" aria-label="Report time range">
+        @for (range of ranges; track range) {
+          <button
+            type="button"
+            class="btn btn-outline-primary"
+            [class.active]="days() === range"
+            [attr.aria-pressed]="days() === range"
+            (click)="setRange(range)"
+          >
+            {{ range }} days
+          </button>
+        }
+      </div>
+    </div>
+
+    <div class="row row-cols-2 row-cols-md-4 g-3 mb-4" data-testid="stat-tiles">
+      @for (tile of tiles(); track tile.label) {
+        <div class="col">
+          <div class="card border-0 shadow-sm h-100">
+            <div class="card-body">
+              <div class="text-muted small text-uppercase">{{ tile.label }}</div>
+              <div class="h3 fw-bold mb-0" style="color: var(--viz-text-primary)">
+                {{ tile.value }}
+              </div>
+            </div>
+          </div>
+        </div>
+      }
+    </div>
+
+    <!-- ---------------------------------------------------------------- revenue over time -->
+    <div class="card border-0 shadow-sm mb-4">
+      <div class="card-body">
+        <h3 class="h6 fw-bold mb-1">Revenue per day</h3>
+        <p class="text-muted small mb-3">Paid, preparing and completed orders.</p>
+
+        @if (revenuePoints().length === 0) {
+          <p class="text-muted small mb-0">No orders in this window.</p>
+        } @else {
+          <app-line-chart [points]="revenuePoints()" [height]="260" />
+        }
+      </div>
+    </div>
+
+    <div class="row g-4">
+      <!-- ------------------------------------------------------------ top products -->
+      <div class="col-lg-7">
+        <div class="card border-0 shadow-sm h-100">
+          <div class="card-body">
+            <h3 class="h6 fw-bold mb-1">Best sellers</h3>
+            <p class="text-muted small mb-3">Units sold in the selected window.</p>
+
+            @if (topProducts().length === 0) {
+              <p class="text-muted small mb-0">Nothing sold in this window.</p>
+            } @else {
+              <app-bar-chart [rows]="topProducts()" />
+            }
+          </div>
+        </div>
+      </div>
+
+      <!-- ------------------------------------------------------------ status breakdown -->
+      <div class="col-lg-5">
+        <div class="card border-0 shadow-sm h-100">
+          <div class="card-body">
+            <h3 class="h6 fw-bold mb-1">Orders by status</h3>
+            <p class="text-muted small mb-3">Every order in the window, paid or not.</p>
+
+            <!--
+              A table, not a pie. Five labelled counts are read more precisely as numbers, and it
+              doubles as the accessible view of the data — no information is carried by colour alone
+              anywhere on this page.
+            -->
+            <table class="table table-sm mb-0">
+              <thead class="visually-hidden">
+                <tr>
+                  <th>Status</th>
+                  <th>Orders</th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (row of statusBreakdown(); track row.status) {
+                  <tr>
+                    <td class="text-muted small" style="width: 45%">{{ row.status | humanise }}</td>
+                    <td>
+                      <!-- An inline bar keeps the comparison visual without a second chart. -->
+                      <div class="d-flex align-items-center gap-2">
+                        <div
+                          style="height: 10px; border-radius: 4px; background: var(--viz-series-1)"
+                          [style.width.%]="row.width"
+                        ></div>
+                        <span class="small fw-bold">{{ row.count }}</span>
+                      </div>
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+}

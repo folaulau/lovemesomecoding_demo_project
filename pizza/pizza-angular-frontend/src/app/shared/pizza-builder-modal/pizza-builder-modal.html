@@ -1,0 +1,129 @@
+<app-modal
+  [open]="product() !== null"
+  size="lg"
+  [scrollable]="true"
+  [spreadFooter]="true"
+  [ariaLabel]="product()?.name ?? 'Build your order'"
+  (closed)="closed.emit()"
+>
+  <span modal-title>{{ product()?.name }}</span>
+
+  <div modal-body>
+    <p class="text-muted">{{ product()?.description }}</p>
+
+    <section class="mb-4">
+      <h4 class="h6 fw-bold text-uppercase text-muted">Size</h4>
+      <div class="btn-group w-100" role="group" aria-label="Size">
+        @for (option of product()?.sizes ?? []; track option.size) {
+          <input
+            type="radio"
+            class="btn-check"
+            name="size"
+            [id]="'size-' + option.size"
+            [checked]="size() === option.size"
+            (change)="size.set(option.size)"
+          />
+          <label class="btn btn-outline-primary size-option" [for]="'size-' + option.size">
+            {{ label(option.size) }}
+            <div class="small">{{ option.price | money }}</div>
+          </label>
+        }
+      </div>
+    </section>
+
+    <!-- Crust and toppings only make sense for a pizza. -->
+    @if (isPizza()) {
+      <section class="mb-4">
+        <h4 class="h6 fw-bold text-uppercase text-muted">Crust</h4>
+        <div class="row row-cols-2 row-cols-md-4 g-2">
+          @for (option of crusts(); track option.id) {
+            <div class="col">
+              <div class="form-check">
+                <input
+                  class="form-check-input"
+                  type="radio"
+                  name="crust"
+                  [id]="'crust-' + option.id"
+                  [checked]="crustId() === option.id"
+                  (change)="crustId.set(option.id)"
+                />
+                <label class="form-check-label" [for]="'crust-' + option.id">
+                  {{ option.name }}
+                  @if (option.priceDelta > 0) {
+                    <span class="text-muted small d-block">+{{ option.priceDelta | money }}</span>
+                  }
+                </label>
+              </div>
+            </div>
+          }
+        </div>
+      </section>
+
+      <section class="mb-4">
+        <h4 class="h6 fw-bold text-uppercase text-muted">
+          Toppings
+          @if (selectedToppings().length > 0) {
+            <span class="badge bg-primary">{{ selectedToppings().length }} selected</span>
+          }
+        </h4>
+
+        @for (group of groups; track group.category) {
+          <div class="mb-3">
+            <div class="small fw-semibold mb-1">{{ group.label }}</div>
+            <div class="d-flex flex-wrap gap-2">
+              @for (topping of toppingsIn(group.category); track topping.id) {
+                <!--
+                  ANGULAR CONCEPT: @let binds a value for the rest of the block.
+
+                  Without it `isSelected(topping.id)` would be called three times per chip — once
+                  for the class, once for aria-pressed, once for nothing. A template is not
+                  JavaScript, so there is no `const` to reach for; @let is it.
+                -->
+                @let selected = isSelected(topping.id);
+                <button
+                  type="button"
+                  class="btn btn-sm topping-chip"
+                  [class.btn-primary]="selected"
+                  [class.btn-outline-secondary]="!selected"
+                  [attr.aria-pressed]="selected"
+                  (click)="toggleTopping(topping.id)"
+                >
+                  {{ topping.name }}
+                  <span class="ms-1 small opacity-75">+{{ topping.price | money }}</span>
+                </button>
+              }
+            </div>
+          </div>
+        }
+      </section>
+    }
+
+    <section>
+      <label for="builder-quantity" class="form-label h6 fw-bold text-uppercase text-muted">
+        Quantity
+      </label>
+      <select
+        id="builder-quantity"
+        class="form-select"
+        style="max-width: 8rem"
+        [value]="quantity()"
+        (change)="quantity.set(+$any($event.target).value)"
+      >
+        @for (n of [1, 2, 3, 4, 5]; track n) {
+          <option [value]="n">{{ n }}</option>
+        }
+      </select>
+    </section>
+  </div>
+
+  <div modal-footer>
+    <div>
+      <div class="text-muted small">{{ unitPrice() | money }} each</div>
+      <div class="fs-5 fw-bold">{{ totalPrice() | money }}</div>
+    </div>
+  </div>
+  <div modal-footer class="d-flex gap-2">
+    <button type="button" class="btn btn-outline-secondary" (click)="closed.emit()">Cancel</button>
+    <button type="button" class="btn btn-primary" (click)="add()">Add to cart</button>
+  </div>
+</app-modal>

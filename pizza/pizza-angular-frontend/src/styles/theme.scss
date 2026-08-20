@@ -1,0 +1,314 @@
+@use 'tokens' as *;
+
+/*
+ * Pizza Hut-flavoured theme layered on top of Bootstrap 5.3.
+ *
+ * Bootstrap 5.3 exposes its design tokens as CSS custom properties, so the palette can be
+ * retuned by redefining variables rather than by fighting the defaults with !important.
+ * That is the whole reason this file is short.
+ *
+ * SASS NOTE. `@use 'tokens'` pulls in _tokens.scss — the leading underscore marks it a partial,
+ * meaning Sass compiles it into whatever imports it rather than into a stylesheet of its own.
+ * `as *` drops its members into this file's namespace so they can be written `$pizza-red`
+ * instead of `tokens.$pizza-red`.
+ */
+
+:root {
+  /*
+   * The Sass variables, re-emitted as custom properties.
+   *
+   * This looks redundant and is not. `$pizza-red` vanishes at build time; `--pizza-red` is a real
+   * value the browser holds and that Bootstrap, DevTools and any component override can reach.
+   * Declaring the palette once in Sass and publishing it here keeps a single source of truth for
+   * both halves.
+   */
+  --pizza-red: #{$pizza-red};
+  --pizza-red-dark: #{$pizza-red-dark};
+  --pizza-black: #{$pizza-black};
+  --pizza-cream: #{$pizza-cream};
+
+  /* Bootstrap token overrides — every btn-primary, link and focus ring follows these. */
+  --bs-primary: var(--pizza-red);
+  --bs-primary-rgb: 216, 16, 42;
+  --bs-link-color: var(--pizza-red);
+  --bs-link-hover-color: var(--pizza-red-dark);
+  --bs-body-font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+}
+
+body {
+  background-color: var(--pizza-cream);
+  color: var(--pizza-black);
+}
+
+/* Bootstrap's .btn-primary reads its own set of variables, so it needs them restated. */
+.btn-primary {
+  --bs-btn-bg: var(--pizza-red);
+  --bs-btn-border-color: var(--pizza-red);
+  --bs-btn-hover-bg: var(--pizza-red-dark);
+  --bs-btn-hover-border-color: var(--pizza-red-dark);
+  --bs-btn-active-bg: var(--pizza-red-dark);
+  --bs-btn-active-border-color: var(--pizza-red-dark);
+  --bs-btn-disabled-bg: var(--pizza-red);
+  --bs-btn-disabled-border-color: var(--pizza-red);
+
+  font-weight: 700;
+}
+
+.btn-outline-primary {
+  --bs-btn-color: var(--pizza-red);
+  --bs-btn-border-color: var(--pizza-red);
+  --bs-btn-hover-bg: var(--pizza-red);
+  --bs-btn-hover-border-color: var(--pizza-red);
+  --bs-btn-active-bg: var(--pizza-red);
+  --bs-btn-active-border-color: var(--pizza-red);
+
+  font-weight: 600;
+}
+
+.text-pizza-red {
+  color: var(--pizza-red) !important;
+}
+
+.bg-pizza-black {
+  background-color: var(--pizza-black) !important;
+}
+
+/* ---------------------------------------------------------------- navbar */
+
+.pizza-navbar {
+  background-color: var(--pizza-black);
+  box-shadow: 0 2px 8px rgb(0 0 0 / 25%);
+}
+
+.pizza-brand {
+  font-weight: 800;
+  font-size: 1.5rem;
+  letter-spacing: -0.5px;
+  color: #fff;
+
+  // Nesting. `span` compiles to `.pizza-brand span`, so the "Hub" half of the wordmark is
+  // styled next to the rule it belongs to instead of in a separate selector further down.
+  span {
+    color: var(--pizza-red);
+  }
+}
+
+/* ---------------------------------------------------------------- hero */
+
+.pizza-hero {
+  background:
+    linear-gradient(120deg, rgb(35 31 32 / 92%) 0%, rgb(166 13 32 / 88%) 100%),
+    url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40"><circle cx="20" cy="20" r="3" fill="%23ffffff" opacity="0.08"/></svg>');
+  color: #fff;
+  padding: 4rem 0;
+
+  h1 {
+    font-weight: 800;
+    letter-spacing: -1px;
+  }
+}
+
+/* ---------------------------------------------------------------- cards */
+
+.product-card {
+  border: 0;
+  border-radius: $card-radius;
+  box-shadow: 0 2px 10px rgb(0 0 0 / 8%);
+  height: 100%;
+
+  /*
+   * The lift on hover is opt-in rather than opt-out: the mixin only emits these declarations
+   * inside `prefers-reduced-motion: no-preference`, so a visitor who has asked their OS to calm
+   * animations down never gets the transition in the first place. Nothing to undo later.
+   */
+  @include motion-safe {
+    transition:
+      transform $transition-fast,
+      box-shadow $transition-fast;
+
+    // `&` is the parent selector. This compiles to `.product-card:hover`.
+    &:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 8px 20px rgb(0 0 0 / 14%);
+    }
+  }
+}
+
+/* Stand-in for real photography — the backend seeds image URLs that do not exist yet. */
+.product-thumb {
+  height: 160px;
+  border-radius: $card-radius $card-radius 0 0;
+  background: linear-gradient(135deg, #f6b73c 0%, var(--pizza-red) 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 3.5rem;
+}
+
+/* ---------------------------------------------------------------- misc */
+
+.size-option {
+  cursor: pointer;
+}
+
+.topping-chip {
+  cursor: pointer;
+  user-select: none;
+}
+
+.cart-badge {
+  position: absolute;
+  top: 0;
+  right: 0;
+  transform: translate(35%, -35%);
+}
+
+.sticky-summary {
+  position: sticky;
+  top: 1rem;
+}
+
+/* ---------------------------------------------------------------- data viz
+ *
+ * Chart roles as tokens, so the chart code is written against meaning rather than raw hex and a
+ * palette change is one edit here.
+ *
+ * --viz-series-1 is the brand red. It was run through the palette validator against the chart
+ * surface before use: it passes the lightness band, the chroma floor and >= 3:1 contrast.
+ * Every chart below plots a SINGLE series, so there is no colorblind-separation problem to solve —
+ * the categories are named on the axis, not encoded in hue. Colouring each bar differently would
+ * be decoration, not information.
+ *
+ * This app is deliberately light-only (see the palette at the top of this file), so there is no
+ * dark-mode step to validate.
+ */
+.viz-root {
+  --viz-surface: #ffffff;
+  --viz-series-1: #{$pizza-red};
+  --viz-text-primary: #{$pizza-black};
+  --viz-text-secondary: #6c6a68;
+  --viz-grid: #eceae7;
+
+  /* Recessive axes and gridlines — the data should be the loudest thing in the frame. */
+  .viz-axis-line,
+  .viz-grid-line {
+    stroke: var(--viz-grid);
+  }
+
+  .viz-tick {
+    fill: var(--viz-text-secondary);
+    font-size: 12px;
+  }
+
+  /* The hover band sits UNDER the marks, so it never dims the line it is explaining. */
+  .viz-hover-band {
+    fill: var(--viz-grid);
+    fill-opacity: 0.45;
+  }
+}
+
+.viz-tooltip {
+  background: var(--viz-surface);
+  border: 1px solid var(--viz-grid);
+  border-radius: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  box-shadow: 0 4px 14px rgb(0 0 0 / 10%);
+  font-size: 0.8125rem;
+
+  .viz-tooltip-label {
+    color: var(--viz-text-secondary);
+    margin-bottom: 0.25rem;
+  }
+
+  .viz-tooltip-value {
+    color: var(--viz-text-primary);
+    font-weight: 700;
+  }
+}
+
+.admin-nav .nav-link.active {
+  font-weight: 700;
+}
+
+/* ---------------------------------------------------------------- demo logins
+ *
+ * The collapsed credentials panel in the footer. Styled here rather than inline so the footer
+ * component stays about content.
+ */
+.demo-logins {
+  border: 1px solid rgb(255 255 255 / 15%);
+  border-radius: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  max-width: 34rem;
+
+  > summary {
+    cursor: pointer;
+    font-weight: 600;
+    color: #fff;
+    list-style: none;
+    font-size: 0.875rem;
+
+    /* Replace the default triangle with one that rotates, in both engines. */
+    &::-webkit-details-marker {
+      display: none;
+    }
+
+    &::before {
+      content: '▸';
+      display: inline-block;
+      margin-right: 0.5rem;
+
+      @include motion-safe {
+        transition: transform $transition-fast;
+      }
+    }
+  }
+
+  // `&[open] > summary::before` — the parent selector can be suffixed, not just prefixed, which
+  // is what lets the open state be written inside the block it modifies.
+  &[open] > summary::before {
+    transform: rotate(90deg);
+  }
+
+  code {
+    color: #ffb3bd;
+    background: rgb(255 255 255 / 8%);
+    padding: 0.05rem 0.3rem;
+    border-radius: 0.25rem;
+  }
+}
+
+/* ---------------------------------------------------------------- hand-rolled overlays
+ *
+ * react-bootstrap ships JavaScript components for the modal and the offcanvas drawer. Angular has
+ * no official equivalent, and pulling in Bootstrap's own bundle would mean driving imperative
+ * `new bootstrap.Modal(el)` handles from inside components that are otherwise declarative.
+ *
+ * So `<app-modal>` and `<app-cart-drawer>` render Bootstrap's OWN markup and classes and toggle
+ * `.show` themselves. Bootstrap's CSS already styles every part of it; the only thing missing is
+ * `display`, which its JavaScript normally sets inline. These two rules supply it.
+ */
+.modal.show {
+  display: block;
+}
+
+.offcanvas.show {
+  visibility: visible;
+}
+
+/*
+ * Toasts sit above the offcanvas (1045) and the modal (1055), so one fired from inside either is
+ * still visible. Same reasoning — and the same numbers — as the React ToastContext.
+ */
+.toast-host {
+  z-index: 1100;
+  margin-top: 4rem;
+}
+
+/*
+ * Stripe mounts its card iframe into this element. It needs a real height before Stripe measures
+ * it, or the iframe can settle at zero pixels and the form looks like it failed to load.
+ */
+.stripe-element-host {
+  min-height: 12rem;
+}

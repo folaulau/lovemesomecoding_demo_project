@@ -1,0 +1,141 @@
+@if (loading() && products().length === 0) {
+  <app-spinner label="Loading products…" />
+} @else {
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h2 class="h5 fw-bold mb-0">Products · {{ products().length }}</h2>
+    <button type="button" class="btn btn-primary" (click)="openCreate()">Add product</button>
+  </div>
+
+  @if (error(); as message) {
+    <div class="alert alert-danger">{{ message }}</div>
+  }
+
+  <div class="card border-0 shadow-sm">
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-hover mb-0 align-middle">
+          <thead>
+            <tr>
+              <th class="ps-3">Name</th>
+              <th>Type</th>
+              <th>Status</th>
+              <th>Small</th>
+              <th>Medium</th>
+              <th>Large</th>
+              <th class="text-end pe-3">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (product of products(); track product.id) {
+              <tr>
+                <td class="ps-3">
+                  <div class="fw-semibold">{{ product.name }}</div>
+                  <div class="text-muted small">{{ product.description }}</div>
+                </td>
+                <td>
+                  <span class="badge" [class.bg-primary]="product.type === 'PIZZA'"
+                        [class.bg-secondary]="product.type !== 'PIZZA'">
+                    {{ product.type }}
+                  </span>
+                </td>
+                <td>
+                  @if (product.active) {
+                    <span class="badge bg-success">active</span>
+                  } @else {
+                    <span class="badge bg-warning text-dark">hidden</span>
+                  }
+                </td>
+                @for (size of sizes; track size) {
+                  <td class="small">{{ priceFor(product, size) | money }}</td>
+                }
+                <td class="text-end pe-3">
+                  <button type="button" class="btn btn-sm btn-outline-secondary"
+                          (click)="openEdit(product)">Edit</button>
+                  @if (product.active) {
+                    <button type="button" class="btn btn-sm btn-outline-warning"
+                            (click)="deactivate(product)">Hide</button>
+                  }
+                  <button type="button" class="btn btn-sm btn-outline-danger"
+                          (click)="remove(product)">Delete</button>
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+}
+
+<app-modal [open]="editing() !== null" size="lg" (closed)="editing.set(null)">
+  <span modal-title>
+    {{ editing() === 'new' ? 'New product' : 'Edit ' + form.controls.name.value }}
+  </span>
+
+  <div modal-body>
+    <form id="product-form" [formGroup]="form" (ngSubmit)="save()">
+      @if (formError(); as message) {
+        <div class="alert alert-danger">{{ message }}</div>
+      }
+
+      <div class="row g-3">
+        <div class="col-md-8">
+          <label class="form-label" for="product-name">Name</label>
+          <input id="product-name" class="form-control" formControlName="name"
+                 [class.is-invalid]="fieldError('name')" />
+          <div class="invalid-feedback">{{ fieldError('name') }}</div>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label" for="product-type">Type</label>
+          <select id="product-type" class="form-select" formControlName="type">
+            <option value="PIZZA">Pizza</option>
+            <option value="DRINK">Drink</option>
+          </select>
+        </div>
+        <div class="col-12">
+          <label class="form-label" for="product-description">Description</label>
+          <textarea id="product-description" class="form-control" rows="2"
+                    formControlName="description"></textarea>
+        </div>
+
+        <div class="col-12">
+          <div class="fw-semibold small text-uppercase text-muted mb-2">Prices per size</div>
+          <div class="row g-2" formArrayName="sizes">
+            @for (control of sizeControls.controls; track $index) {
+              <div class="col-md-4" [formGroupName]="$index">
+                <label class="form-label small" [for]="'price-' + sizes[$index]">
+                  {{ label(sizes[$index]) }}
+                </label>
+                <input [id]="'price-' + sizes[$index]" class="form-control" type="number"
+                       min="0.01" step="0.01" formControlName="price" />
+              </div>
+            }
+          </div>
+          @if (fieldError('sizes'); as message) {
+            <div class="text-danger small mt-1">{{ message }}</div>
+          }
+        </div>
+
+        <div class="col-md-6">
+          <label class="form-label" for="product-order">Display order</label>
+          <input id="product-order" class="form-control" type="number"
+                 formControlName="displayOrder" />
+        </div>
+        <div class="col-md-6 d-flex align-items-end">
+          <div class="form-check form-switch">
+            <input class="form-check-input" type="checkbox" id="product-active"
+                   formControlName="active" />
+            <label class="form-check-label" for="product-active">Visible on the menu</label>
+          </div>
+        </div>
+      </div>
+    </form>
+  </div>
+
+  <div modal-footer>
+    <button type="button" class="btn btn-outline-secondary" (click)="editing.set(null)">Cancel</button>
+    <button type="submit" form="product-form" class="btn btn-primary" [disabled]="saving()">
+      {{ saving() ? 'Saving…' : 'Save product' }}
+    </button>
+  </div>
+</app-modal>
