@@ -1,0 +1,3 @@
+# The working CSV "database". Only data/seed/ is committed — the app copies from it on first run,
+# so running the app can never dirty the repository, and deleting these files is a full reset.
+data/*.csv

@@ -1,0 +1,3 @@
+id,email,password,full_name,created_at
+1,alice@bank.test,password123,Alice Fifita,2026-01-15T09:12:00
+2,bob@bank.test,password123,Bob Tupou,2026-02-03T14:40:00

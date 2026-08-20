@@ -1,0 +1,7 @@
+id,account_id,type,amount,balance_after,timestamp,description
+1,1,DEPOSIT,1500.00,1500.00,2026-01-15T09:15:00,Opening deposit
+2,1,WITHDRAWAL,250.00,1250.00,2026-03-02T11:05:00,ATM withdrawal
+3,2,DEPOSIT,8400.50,8400.50,2026-01-15T09:16:00,Opening deposit
+4,3,DEPOSIT,500.00,500.00,2026-02-03T14:45:00,Opening deposit
+5,3,WITHDRAWAL,189.25,310.75,2026-04-11T18:22:00,Groceries
+6,4,DEPOSIT,120.00,120.00,2026-02-03T14:46:00,Opening deposit
