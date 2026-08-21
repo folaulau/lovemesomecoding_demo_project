@@ -5,7 +5,7 @@ import { Button } from '../components/Button'
 import { ShieldIcon, SpinnerIcon } from '../components/Icons'
 import { useToast } from '../context/ToastContext'
 import { bookingApi, paymentApi } from '../lib/api'
-import { formatRange } from '../lib/dates'
+import { formatDate, formatRange } from '../lib/dates'
 import { moneyExact } from '../lib/money'
 import { getStripe } from '../lib/stripe'
 import type { Booking, PaymentIntentResponse } from '../types'
@@ -147,7 +147,7 @@ export function Checkout() {
 
             <p className="mt-4 flex items-start gap-2 rounded-lg bg-ink-50 p-3 text-xs text-ink-600">
               <ShieldIcon className="h-4 w-4 shrink-0 text-ink-500" />
-              Cancel free until {booking.cancellationDeadline}.
+              Cancel free until {formatDate(booking.cancellationDeadline)}.
             </p>
           </div>
         </aside>

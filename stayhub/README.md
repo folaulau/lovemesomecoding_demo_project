@@ -15,7 +15,7 @@
 - Hosts must be able to sign up and sign in, add a house to show
 - Use elasticsearch and sink data from postgres for just the houses so searching is fast. Do this sync in the code.
 - User docker composer for services needed. Change port if already taken
-
+- these are test keys so dont about using them in public
 - Publishable key: pk_test_51U6lc767a3bv3VDo8tOKoYDkC2hcCd3QpC4tBT5xXvWI4IkCWBZTJSxme7DbJclzKoaDqT1NwzlgMgZVhZ0viW2w00ZJNrSPyg
 - Secret key: sk_test_51U6lc767a3bv3VDoK4Ew6ocFNhSsbik6CtszbAaQMd6JCrT7fXOVUwFWFimorIUU9Px83vN8e6Orwh24l7XmOhff00RRan7iAd
 ---
@@ -31,7 +31,7 @@ gotchas already paid for, and what is still open. `CLAUDE.md` holds the standing
 | API | http://localhost:8000 — docs at `/docs` |
 | Customer + host app | http://localhost:5174 |
 | Admin console | http://localhost:5175 |
-| Tests | 58 backend · 32 customer e2e · 7 admin e2e |
+| Tests | 58 backend · 33 customer e2e · 7 admin e2e |
 
 Demo logins: `guest@stayhub.test` / `guest123` · `host@stayhub.test` / `host123` ·
 `admin@stayhub.test` / `admin123`

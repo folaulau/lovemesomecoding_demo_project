@@ -158,8 +158,13 @@ Test mode. The **publishable** key is public by design and goes in each frontend
 `.env.local` as `VITE_STRIPE_PUBLISHABLE_KEY`. The **secret** key lives only in
 `stayhub-fastapi-backend/.env` — never in this file, never in a commit.
 
-Without a secret key the whole app works except paying: a booking is created and held as PENDING,
-and the checkout page says payment is not configured rather than failing obscurely.
+Keys are configured — checkout creates real test-mode PaymentIntents. Without a secret key the
+whole app still works except paying: a booking is created and held as PENDING, and the checkout
+page says payment is not configured rather than failing obscurely.
+
+⚠️ **Read the publishable key from `settings`, never `os.getenv`.** pydantic-settings parses `.env`
+into the `Settings` object and never populates `os.environ`, so `os.getenv` returns `""` and the
+browser gets an empty key — with no error anywhere.
 
 Webhooks need a public URL, so locally the confirmation page polls
 `GET /payments/booking/{id}`, which asks Stripe directly. The webhook stays the authority in
@@ -171,7 +176,7 @@ production.
 
 ```bash
 cd stayhub-fastapi-backend && .venv/bin/python -m pytest -q      # 58 — needs Postgres
-cd stayhub-react-frontend && npm run test:e2e                    # 32 — needs everything running
+cd stayhub-react-frontend && npm run test:e2e                    # 33 — needs everything running
 cd stayhub-react-admin-frontend && npm run test:e2e              #  7
 npm run screenshots                                              # regenerate screenshots/
 ```

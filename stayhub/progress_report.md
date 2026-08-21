@@ -3,8 +3,8 @@
 Shared context for the StayHub demo (Airbnb-style short-term rentals).
 **Read this first when resuming work.**
 
-**Status:** Complete and working end to end. **58 backend + 32 customer + 7 admin tests, all green.**
-**Last updated:** 2026-08-20
+**Status:** Complete and working end to end, Stripe included. **58 backend + 33 customer + 7 admin tests, all green.**
+**Last updated:** 2026-08-21
 
 ---
 
@@ -126,10 +126,6 @@ stayhub/
 | 13 | Tests (pytest + Playwright) | Claude | done |
 
 ### Still open
-- **Stripe needs a test secret key.** Everything else works without it: a booking is created and
-  held as PENDING, and checkout says payment is not configured rather than failing obscurely.
-  Add `STAYHUB_STRIPE_SECRET_KEY` to `stayhub-fastapi-backend/.env` and
-  `VITE_STRIPE_PUBLISHABLE_KEY` to each frontend's `.env.local`.
 - **Nothing expires a stale PENDING booking.** It holds the dates until cancelled. A background
   job would sweep them; that is out of scope here and worth naming rather than pretending it is
   handled.
@@ -177,6 +173,14 @@ Run against the live stack, not asserted from reading the code:
   buttons hidden.
 - **`/admin/stats` and Hasura's `propertiesAggregate` agree** (12 and 12) while Postgres physically
   holds 13 rows — the soft-deleted one excluded by both.
+- **Stripe checkout, against a real test-mode account** — a booking creates a genuine
+  PaymentIntent for the server-computed total, and Stripe's Payment Element mounts with it
+  (Card, Cash App Pay, Klarna and the rest). The card fields are never driven from the test:
+  they live in a cross-origin iframe — which is what keeps this app out of PCI scope — and
+  headless automation trips hCaptcha. `payment.spec.ts` asserts everything up to that line,
+  including that the secret key never appears in a response.
+- **Requesting an intent twice reuses the same one** rather than leaving abandoned
+  PaymentIntents behind — two live intents for one booking is how a double charge happens.
 - **Hasura permissions**, per role:
   - anonymous → published listings + host first names. `bookings` is not in the schema at all;
     `passwordHash` and `addressLine1` do not exist as fields.
@@ -230,6 +234,18 @@ Run against the live stack, not asserted from reading the code:
 - **Alembic autogenerate only sees models something imports.** `app/models/__init__.py` imports
   every model for exactly this reason; a model in an unimported file gets a DROP migration written
   for it.
+
+### FastAPI config
+- **`os.getenv` does NOT see anything that lives only in `.env`.** pydantic-settings parses the
+  file into the `Settings` object and never touches `os.environ`. The failure is quiet: the
+  payment intent was created correctly and the browser just received an empty publishable key.
+  Everything configurable belongs in `Settings`, read as `settings.x`.
+
+### Intl / dates
+- **`toLocaleDateString` with `{ day, year }` and no month is not a supported combination**, and
+  Intl does not error — it emits a literal fallback, `"2026 (day: 7)"`. It reads as a bug in the
+  calling function. `formatRange` builds that half by hand.
+- **A collapsed month stays on the FIRST date**: "Sep 4 – 7, 2026", never "4 – Sep 7, 2026".
 
 ### React / Apollo / Vite
 - **Apollo Client v4 moved the React bindings** to `@apollo/client/react`, and `ErrorLink` /

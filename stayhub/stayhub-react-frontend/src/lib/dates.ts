@@ -47,13 +47,26 @@ export function formatDate(iso: string): string {
   })
 }
 
-/** "10 – 13 Nov 2026", collapsing the month when both dates share one. */
+/** "Sep 4 – 7, 2026" within one month, "Sep 28 – Oct 2, 2026" across two.
+ *
+ * ⚠️ When the month is collapsed it stays on the FIRST date, not the second. Dropping it from the
+ * left instead produces "4 – Sep 7, 2026", which reads as a range starting in an unnamed month.
+ */
 export function formatRange(checkIn: string, checkOut: string): string {
   const a = parseISODate(checkIn)
   const b = parseISODate(checkOut)
   const sameMonth = a.getMonth() === b.getMonth() && a.getFullYear() === b.getFullYear()
-  const left = a.toLocaleDateString('en-US', sameMonth ? { day: 'numeric' } : { day: 'numeric', month: 'short' })
-  const right = b.toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' })
+
+  const left = a.toLocaleDateString('en-US', { day: 'numeric', month: 'short' })
+
+  // ⚠️ The same-month right half is built by hand, NOT by Intl. Asking for
+  // `{ day: 'numeric', year: 'numeric' }` with no month is not a format Intl supports, and rather
+  // than erroring it emits a literal fallback — "2026 (day: 7)". It looks like a bug in this
+  // function; it is Intl doing exactly what the spec tells it to with an unsupported combination.
+  const right = sameMonth
+    ? `${b.getDate()}, ${b.getFullYear()}`
+    : b.toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' })
+
   return `${left} – ${right}`
 }
 

@@ -33,6 +33,10 @@ class Settings(BaseSettings):
 
     stripe_secret_key: str = ""
     stripe_webhook_secret: str = ""
+    # Public by design — it identifies the account and can only create payment attempts, never
+    # move money. The API hands it to the browser alongside the client_secret so the frontend
+    # needs no Stripe configuration of its own.
+    stripe_publishable_key: str = ""
 
     # The two Vite dev servers. Anything else fails CORS, and the symptom in the browser is a
     # blank page rather than an error anyone would recognise.

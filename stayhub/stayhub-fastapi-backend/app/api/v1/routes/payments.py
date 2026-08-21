@@ -1,7 +1,6 @@
-import os
-
 from fastapi import APIRouter, Header, Request
 
+from app.core.config import settings
 from app.core.deps import CurrentUser, DbSession
 from app.core.exceptions import ApiException, NotFoundException
 from app.repositories.booking_repository import BookingRepository
@@ -26,8 +25,10 @@ def create_intent(
     if booking is None or booking.guest_id != user.id:
         raise NotFoundException("Booking not found.")
 
-    publishable_key = os.getenv("STAYHUB_STRIPE_PUBLISHABLE_KEY", "")
-    return PaymentService(db).create_intent(booking, publishable_key)
+    # ⚠️ NOT os.getenv. pydantic-settings parses .env into the Settings object and never touches
+    # os.environ, so os.getenv returns "" for anything that lives only in the file. The failure is
+    # quiet: the intent is created fine and the browser just gets an empty publishable key.
+    return PaymentService(db).create_intent(booking, settings.stripe_publishable_key)
 
 
 @router.get("/booking/{booking_public_id}", response_model=PaymentResponse)
