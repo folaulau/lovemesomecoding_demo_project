@@ -9,8 +9,18 @@ Hasura is configured to do the same (`HASURA_GRAPHQL_DEFAULT_NAMING_CONVENTION: 
 so the frontends see one consistent shape whichever API answered.
 """
 
+import email_validator
 from pydantic import BaseModel, ConfigDict
 from pydantic.alias_generators import to_camel
+
+# ⚠️ `EmailStr` rejects `@stayhub.test` out of the box, with the baffling message "the part after
+# the @-sign is a special-use or reserved name". It is right: RFC 6761 reserves `.test` precisely
+# SO THAT it can never be a real domain — which is exactly why it is the correct TLD for demo
+# accounts, and exactly why the validator refuses to let mail be sent to it.
+#
+# This flag says "these addresses are for testing, allow the reserved TLDs". A production service
+# should NOT set it: there, an address at `.test` really is a mistake worth catching.
+email_validator.TEST_ENVIRONMENT = True
 
 
 class ApiModel(BaseModel):

@@ -23,27 +23,9 @@ from app.repositories.booking_repository import BookingRepository
 from app.repositories.property_repository import PropertyRepository
 from app.schemas.booking import BookingCreateRequest, PriceBreakdown, QuoteRequest
 from app.services import pricing_service
+from app.services.cancellation_policy import cancellation_deadline, is_cancellable
 
 logger = logging.getLogger(__name__)
-
-
-def cancellation_deadline(check_in: date) -> date:
-    """The last day a guest may cancel — the README's "up to 2 days before start date".
-
-    Expressed as a date, not a timestamp, so it does not depend on what timezone the guest or the
-    server is in. "Two days before check-in" means a day on the calendar; making it an instant
-    would mean a guest in Auckland and one in Los Angeles get different deadlines for the same stay.
-    """
-    return check_in - timedelta(days=settings.cancellation_cutoff_days)
-
-
-def is_cancellable(booking: Booking, *, today: date | None = None) -> bool:
-    today = today or datetime.now(UTC).date()
-    if booking.status not in (BookingStatus.PENDING, BookingStatus.CONFIRMED):
-        return False
-    # `<=` — the deadline day itself still counts as cancellable. For a check-in on the 10th the
-    # deadline is the 8th, and cancelling ON the 8th is allowed.
-    return today <= cancellation_deadline(booking.check_in)
 
 
 class BookingService:
@@ -131,7 +113,7 @@ class BookingService:
         # ⚠️ Re-checked here even though the API also returns `isCancellable` for the UI. The
         # button being hidden is a courtesy; this is the rule. Anyone can POST to this endpoint.
         # Staff are exempt — refunds and disputes happen after the deadline by definition.
-        if actor.role != "ADMIN" and not is_cancellable(booking):
+        if actor.role != "ADMIN" and not is_cancellable(booking.status, booking.check_in):
             deadline = cancellation_deadline(booking.check_in)
             raise ApiException(
                 f"This booking can no longer be cancelled — the deadline was {deadline:%d %b %Y}, "

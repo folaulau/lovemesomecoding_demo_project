@@ -6,7 +6,7 @@ from fastapi import APIRouter
 from sqlalchemy import func, select
 
 from app.core.deps import AdminUser, DbSession
-from app.core.exceptions import NotFoundException
+from app.core.exceptions import ApiException, NotFoundException
 from app.models.booking import Booking
 from app.models.enums import BookingStatus, PropertyStatus
 from app.models.property import Property
@@ -86,6 +86,58 @@ def suspend_property(public_id: UUID, _: AdminUser, db: DbSession) -> PropertyRe
 
     indexer.index_property(prop)  # removes it from the index — SUSPENDED is not visible
     return PropertyResponse.model_validate(prop)
+
+
+@router.post("/properties/{public_id}/unsuspend", response_model=PropertyResponse)
+def unsuspend_property(public_id: UUID, _: AdminUser, db: DbSession) -> PropertyResponse:
+    """Put a suspended listing back on the market, and back into search."""
+    repo = PropertyRepository(db)
+    prop = repo.get_by_public_id_full(public_id)
+    if prop is None or prop.deleted:
+        raise NotFoundException("Listing not found.")
+    if prop.status != PropertyStatus.SUSPENDED:
+        raise ApiException("That listing is not suspended.")
+
+    prop.status = PropertyStatus.PUBLISHED
+    db.commit()
+    db.refresh(prop)
+    from app.search import indexer
+
+    indexer.index_property(prop)
+    return PropertyResponse.model_validate(prop)
+
+
+@router.post("/users/{public_id}/deactivate", response_model=Message)
+def deactivate_user(public_id: UUID, actor: AdminUser, db: DbSession) -> Message:
+    """Soft-delete an account.
+
+    ⚠️ Staff cannot deactivate THEMSELVES. With one admin that locks everyone out of the console
+    permanently, and the only way back is a SQL prompt.
+    """
+    user = db.execute(select(User).where(User.public_id == public_id)).scalar_one_or_none()
+    if user is None or user.deleted:
+        raise NotFoundException("User not found.")
+    if user.id == actor.id:
+        raise ApiException("You cannot deactivate your own account.")
+
+    user.deleted = True
+    db.commit()
+
+    # Their listings go with them — otherwise a deactivated host's places stay bookable, and the
+    # guest who books one has nobody to let them in.
+    repo = PropertyRepository(db)
+    for prop in repo.list_for_host(user.id):
+        prop.deleted = True
+        indexer_remove(prop)
+    db.commit()
+
+    return Message(message=f"{user.full_name} deactivated.")
+
+
+def indexer_remove(prop) -> None:
+    from app.search import indexer
+
+    indexer.remove_property(str(prop.public_id))
 
 
 @router.post("/search/reindex", response_model=Message)

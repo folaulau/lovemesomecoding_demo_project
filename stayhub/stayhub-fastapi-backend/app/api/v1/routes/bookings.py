@@ -13,25 +13,16 @@ from app.schemas.booking import (
     PriceBreakdown,
     QuoteRequest,
 )
-from app.services.booking_service import BookingService, cancellation_deadline, is_cancellable
+from app.models.booking import Booking
+from app.services.booking_service import BookingService
 
 router = APIRouter(prefix="/bookings", tags=["bookings"])
 
 
-def _to_response(booking) -> BookingResponse:
-    """Build the DTO, computing the two cancellation fields.
-
-    They are computed rather than stored because the answer changes at every midnight — a stored
-    `is_cancellable` is wrong within a day of being written.
-    """
-    data = BookingResponse.model_validate(
-        booking,
-        update={
-            "is_cancellable": is_cancellable(booking),
-            "cancellation_deadline": cancellation_deadline(booking.check_in),
-        },
-    )
-    return data
+def _to_response(booking: Booking) -> BookingResponse:
+    """`isCancellable` and `cancellationDeadline` are computed fields on the DTO itself — see
+    schemas/booking.py — so there is nothing to assemble here."""
+    return BookingResponse.model_validate(booking)
 
 
 @router.post("/quote", response_model=PriceBreakdown)

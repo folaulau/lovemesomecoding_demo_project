@@ -1,0 +1,17 @@
+# dependencies
+node_modules/
+.venv/
+__pycache__/
+*.pyc
+
+# secrets — the Stripe secret key lives in these
+.env
+.env.local
+
+# build output
+dist/
+.pytest_cache/
+
+# test artifacts
+test-results/
+playwright-report/

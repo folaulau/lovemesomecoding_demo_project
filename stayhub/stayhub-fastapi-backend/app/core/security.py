@@ -39,7 +39,11 @@ def hasura_roles(role: str, is_host: bool) -> tuple[str, list[str]]:
     runs as with the `x-hasura-role` header; Hasura rejects anything not in this list.
     """
     if role == "ADMIN":
-        return "admin", ["admin", "host", "customer", "anonymous"]
+        # ⚠️ The Hasura role is `staff`, not `admin`. `admin` is reserved in Hasura — it is what
+        # the admin SECRET grants, it always bypasses every permission, and Hasura refuses to let
+        # metadata define rules for it. Naming our staff role `admin` here would mint tokens for a
+        # role whose permissions can never be declared, and every staff query would be denied.
+        return "staff", ["staff", "host", "customer", "anonymous"]
     if is_host:
         return "host", ["host", "customer", "anonymous"]
     return "customer", ["customer", "anonymous"]

@@ -15,3 +15,28 @@
 - Hosts must be able to sign up and sign in, add a house to show
 - Use elasticsearch and sink data from postgres for just the houses so searching is fast. Do this sync in the code.
 - User docker composer for services needed. Change port if already taken
+---
+
+## Status
+
+Built and working end to end. **Read `progress_report.md` first** — it holds the decisions, the
+gotchas already paid for, and what is still open. `CLAUDE.md` holds the standing instructions.
+
+| | |
+|---|---|
+| Backing services | `docker compose up -d` — postgres **5433**, hasura **8081**, elasticsearch **9200** |
+| API | http://localhost:8000 — docs at `/docs` |
+| Customer + host app | http://localhost:5174 |
+| Admin console | http://localhost:5175 |
+| Tests | 58 backend · 32 customer e2e · 7 admin e2e |
+
+Demo logins: `guest@stayhub.test` / `guest123` · `host@stayhub.test` / `host123` ·
+`admin@stayhub.test` / `admin123`
+
+### Two requirements resolved with a documented exception
+
+1. **Hosts live in the customer app**, not the admin app — Airbnb has no separate host site, and
+   hosting is a mode of a normal account rather than a privilege level. `/hosts/*` is role-gated.
+2. **"All reads from Hasura" and "Elasticsearch for search" cannot both hold**, because Hasura
+   reads Postgres and the point of the index is to not read Postgres. `GET /api/v1/search` is the
+   single, explicit exception; every other read is a GraphQL query.

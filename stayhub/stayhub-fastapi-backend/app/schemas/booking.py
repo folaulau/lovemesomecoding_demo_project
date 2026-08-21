@@ -2,10 +2,21 @@ from datetime import date, datetime
 from decimal import Decimal
 from uuid import UUID
 
-from pydantic import Field, model_validator
+from pydantic import Field, computed_field, model_validator
 
 from app.models.enums import BookingStatus
 from app.schemas.common import ApiModel
+from app.services.cancellation_policy import cancellation_deadline, is_cancellable
+
+# ⚠️ `BookingResponse` has a field called `property`, and a class body is one namespace: the
+# moment that annotation is assigned, the name `property` inside the class refers to the field,
+# not to the builtin decorator. A `@property` written after it fails with
+# "TypeError: 'NoneType' object is not callable" — which points at the decorator line and says
+# nothing about the field twenty lines above that caused it.
+#
+# Capturing the builtin here under another name sidesteps it without renaming a field that the
+# domain genuinely calls "property".
+builtin_property = property
 
 
 class QuoteRequest(ApiModel):
@@ -67,16 +78,31 @@ class BookingResponse(ApiModel):
     service_fee: Decimal
     total: Decimal
 
-    # Computed, not stored: the answer changes every midnight, so a stored copy is wrong by
-    # definition. The frontend uses it to decide whether to render the Cancel button — but the
-    # server checks the rule again on cancel, because a button is not a permission.
-    is_cancellable: bool
-    cancellation_deadline: date
-
     cancelled_at: datetime | None = None
     cancellation_reason: str | None = None
     property: BookingPropertyResponse | None = None
     created_at: datetime
+
+    # ⚠️ COMPUTED, not stored. The answer changes at every midnight, so a stored copy is wrong
+    # within a day of being written.
+    #
+    # `@computed_field` is pydantic v2's way to add a derived value to the OUTPUT without making
+    # it an input — it appears in the JSON and in the OpenAPI schema, but nothing can send it.
+    # The alternative, passing the values in at construction, meant every call site had to
+    # remember to; this way the rule travels with the DTO.
+    #
+    # The frontend uses these to decide whether to render a Cancel button. The server checks the
+    # same rule again on cancel, because a hidden button is a courtesy, not a permission.
+
+    @computed_field
+    @builtin_property
+    def cancellation_deadline(self) -> date:
+        return cancellation_deadline(self.check_in)
+
+    @computed_field
+    @builtin_property
+    def is_cancellable(self) -> bool:
+        return is_cancellable(self.status, self.check_in)
 
 
 class BookingCancelRequest(ApiModel):

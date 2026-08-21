@@ -1,0 +1,72 @@
+@import "tailwindcss";
+
+/* Tailwind v4 configures itself from CSS. `@theme` defines design tokens, and each one becomes a
+   utility automatically: `--color-brand-500` gives you `bg-brand-500`, `text-brand-500`,
+   `border-brand-500`. This replaces v3's tailwind.config.js `theme.extend`. */
+@theme {
+  /* A warm coral. Deliberately NOT Airbnb's magenta — the brief says behave like Airbnb, not
+     look like it. */
+  --color-brand-50: #fff5f2;
+  --color-brand-100: #ffe6de;
+  --color-brand-200: #ffc9b8;
+  --color-brand-300: #ffa287;
+  --color-brand-400: #ff7551;
+  --color-brand-500: #f4511e;
+  --color-brand-600: #db3d0c;
+  --color-brand-700: #b52f09;
+  --color-brand-800: #8f280d;
+  --color-brand-900: #74250f;
+
+  --color-ink-50: #f7f7f8;
+  --color-ink-100: #eeeef0;
+  --color-ink-200: #d9d9dd;
+  --color-ink-300: #b8b8bf;
+  --color-ink-400: #91919b;
+  --color-ink-500: #73737e;
+  --color-ink-600: #5c5c66;
+  --color-ink-700: #4b4b53;
+  --color-ink-800: #404047;
+  --color-ink-900: #222226;
+
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+
+  --radius-card: 0.875rem;
+}
+
+html {
+  -webkit-font-smoothing: antialiased;
+}
+
+body {
+  @apply bg-white text-ink-900 font-sans;
+}
+
+/* Hide the number input spinners on the guest counter — they are tiny, ugly, and the component
+   already provides its own +/- buttons. */
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+/* A focus ring that is visible for keyboard users and absent for mouse users. `:focus-visible`
+   is the whole reason this is not just `:focus` — removing outlines outright is the single most
+   common accessibility regression in a styled app. */
+:focus-visible {
+  @apply outline-2 outline-offset-2 outline-brand-500;
+}
+
+@keyframes shimmer {
+  100% { transform: translateX(100%); }
+}
+
+.skeleton {
+  @apply relative overflow-hidden bg-ink-100;
+}
+.skeleton::after {
+  content: "";
+  @apply absolute inset-0;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.6), transparent);
+  transform: translateX(-100%);
+  animation: shimmer 1.4s infinite;
+}

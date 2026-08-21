@@ -3,7 +3,7 @@
 Shared context for the StayHub demo (Airbnb-style short-term rentals).
 **Read this first when resuming work.**
 
-**Status:** Phase 0 — scaffolding. Nothing runs yet.
+**Status:** Complete and working end to end. **58 backend + 32 customer + 7 admin tests, all green.**
 **Last updated:** 2026-08-20
 
 ---
@@ -111,22 +111,179 @@ stayhub/
 | # | Task | Owner | Status |
 |---|---|---|---|
 | 0 | Shared context, ports, decisions | Claude | done |
-| 1 | docker-compose: postgres + hasura + elasticsearch | Claude | in progress |
-| 2 | Backend skeleton + layered structure | Claude | todo |
-| 3 | Schema + Alembic migrations + seed data | Claude | todo |
-| 4 | Auth: signup/signin, Hasura JWT claims | Claude | todo |
-| 5 | Hasura metadata: tracked tables + per-role permissions | Claude | todo |
-| 6 | ES index + sync from application code | Claude | todo |
-| 7 | `GET /search` over Elasticsearch | Claude | todo |
-| 8 | Customer frontend: browse, detail, book | Claude | todo |
-| 9 | Booking + cancellation rules (2-day cutoff) | Claude | todo |
-| 10 | Stripe payment + webhook | Claude | todo |
-| 11 | Host mode: become a host, add a listing | Claude | todo |
-| 12 | Admin frontend | Claude | todo |
-| 13 | Tests (pytest + Playwright) | Claude | todo |
+| 1 | docker-compose: postgres + hasura + elasticsearch | Claude | done |
+| 2 | Backend skeleton + layered structure | Claude | done |
+| 3 | Schema + Alembic migrations + seed data | Claude | done |
+| 4 | Auth: signup/signin, Hasura JWT claims | Claude | done |
+| 5 | Hasura metadata: tracked tables + per-role permissions | Claude | done |
+| 6 | ES index + sync from application code | Claude | done |
+| 7 | `GET /search` over Elasticsearch | Claude | done |
+| 9 | Booking + cancellation rules (2-day cutoff) | Claude | done |
+| 10 | Stripe payment + webhook | Claude | code done, **needs a test secret key** |
+| 8 | Customer frontend: browse, detail, book | Claude | done |
+| 11 | Host mode: become a host, add a listing | Claude | done |
+| 12 | Admin frontend | Claude | done |
+| 13 | Tests (pytest + Playwright) | Claude | done |
+
+### Still open
+- **Stripe needs a test secret key.** Everything else works without it: a booking is created and
+  held as PENDING, and checkout says payment is not configured rather than failing obscurely.
+  Add `STAYHUB_STRIPE_SECRET_KEY` to `stayhub-fastapi-backend/.env` and
+  `VITE_STRIPE_PUBLISHABLE_KEY` to each frontend's `.env.local`.
+- **Nothing expires a stale PENDING booking.** It holds the dates until cancelled. A background
+  job would sweep them; that is out of scope here and worth naming rather than pretending it is
+  handled.
+- **`checkIn`/`checkOut` are accepted by `/search` but do not filter.** Availability lives in the
+  bookings table, not the index. The listing page checks it properly. Saying so beats a filter
+  that quietly does nothing.
+- **Reviews are modelled but not exposed.** The table, the constraint and the denormalised
+  `rating_average` exist; no endpoint writes one yet.
 
 ---
 
-## Gotchas paid for so far
+## How to run it
 
-*(nothing yet — this section earns its entries the hard way)*
+See `CLAUDE.md` for the full sequence. Short version:
+
+```bash
+docker compose up -d
+cd stayhub-fastapi-backend && .venv/bin/alembic upgrade head && .venv/bin/python -m scripts.seed
+cd ../hasura && python3 -m scripts.apply
+cd ../stayhub-fastapi-backend && .venv/bin/uvicorn app.main:app --port 8000 --reload
+cd ../stayhub-react-frontend && npm run dev              # :5174
+cd ../stayhub-react-admin-frontend && npm run dev        # :5175
+```
+
+`guest@stayhub.test` / `guest123` · `host@stayhub.test` / `host123` · `admin@stayhub.test` / `admin123`
+
+---
+
+## Verified working
+
+Run against the live stack, not asserted from reading the code:
+
+- **Search** — fuzzy text (`cabin`), AND-ed amenity filters, `guests >= n`, price sort. ~90 ms cold.
+- **Booking** — quote → create → PENDING, with every figure computed server-side.
+- **Overlap rejection** — 10 → 13 Nov booked; 11 → 14 Nov refused with 409.
+- **Back-to-back stays** — 13 → 15 Nov accepted while 10 → 13 stands. The half-open range works.
+- **Concurrency** — 10 simultaneous requests for identical dates: **1 row created, 9 rejected.**
+- **Cancellation cutoff** — a stay starting tomorrow correctly refuses to cancel and names the
+  deadline that passed.
+- **Cancelling frees the dates** — the same range re-books immediately afterwards.
+- **Publishing a listing puts it in search** within ~400 ms, and unpublishing removes it —
+  driven through the host UI, asserted against `/search`.
+- **Suspending from the admin console** pulls a listing out of Elasticsearch; restoring puts it back.
+- **A non-staff account is refused** by the admin console outright, rather than let in with the
+  buttons hidden.
+- **`/admin/stats` and Hasura's `propertiesAggregate` agree** (12 and 12) while Postgres physically
+  holds 13 rows — the soft-deleted one excluded by both.
+- **Hasura permissions**, per role:
+  - anonymous → published listings + host first names. `bookings` is not in the schema at all;
+    `passwordHash` and `addressLine1` do not exist as fields.
+  - customer → own bookings only; zero non-published listings visible.
+  - host → own listings incl. drafts, reservations with guest names, `payments` absent.
+  - staff → everything (12 properties, 6 bookings, 4 users).
+  - a guest asking for `x-hasura-role: staff` → *"Your requested role is not in allowed roles"*.
+
+---
+
+## Gotchas that already cost time — do not rediscover these
+
+### Hasura
+- **"Staff see everything" must NOT mean an empty filter on a soft-deleting table.** `{}` includes
+  deleted rows, so the console counted listings that had been removed while `/admin/stats` — which
+  filters `deleted = false` in SQL — did not. Two totals for the same thing, both plausible, one
+  wrong. `NOT_DELETED` in `metadata.py`.
+- **Relationship names are NOT camelCased by `graphql-default`** — only columns are. The giveaway
+  is that the derived aggregate IS camelCased, so `property_amenities` sat next to
+  `propertyAmenitiesAggregate` in the same type. Name relationships in camelCase by hand.
+- **`admin` is a RESERVED role.** Declaring any permission for it fails with *"cannot define
+  permission for admin role"*, which names the role and not the fact that the role is special.
+  The staff role here is called **`staff`**. The built-in `admin` is what the admin *secret*
+  grants, and a JWT can never carry it — which is the point.
+- **`graphql-default` renames three things, not one.** Columns camelCase (`price_per_night` →
+  `pricePerNight`), and so do **arguments** (`order_by` → `orderBy`, `bookings_aggregate` →
+  `bookingsAggregate`) and **enum values** (`asc` → `ASC`). Every example in Hasura's own docs uses
+  the snake_case form, so copied queries fail with "has no argument named 'order_by'".
+- **Permissions do not cascade through relationships.** Being allowed to read `properties` does not
+  make `property_images` readable — each table needs its own rule that re-states the visibility
+  condition by walking back to the parent. Miss it and the listing page renders with no photos and
+  no error.
+- **A missing permission is stronger than a restrictive one.** With no rule at all, the table is
+  absent from the GraphQL schema entirely (`field 'bookings' not found in type: 'query_root'`).
+- **A relationship the role cannot read resolves to `null`, not an error.** The host reservations
+  query returned bookings with `guest: null` because the `users` rule only exposed hosts. It looks
+  exactly like a broken join.
+- **Inside the compose network Postgres is on 5432**, not the published 5433.
+
+### Postgres
+- **`EXCLUDE USING gist` on `(property_id =, daterange &&)` needs the `btree_gist` extension**, or
+  the CREATE TABLE fails with *"data type bigint has no default operator class for access method
+  gist"* — which reads like a problem with the column.
+- **`'[)'` is load-bearing.** Half-open ranges are what let one guest check out on the 5th and
+  another check in on the 5th. Closed ranges reject every back-to-back booking.
+
+### SQLAlchemy / Alembic
+- **`text("CHECK (...)")` is not a schema item** — `__table_args__` needs `CheckConstraint`.
+- **`.unique()` is mandatory after a `joinedload` of a collection**, and 2.0 raises rather than
+  guessing.
+- **Alembic autogenerate only sees models something imports.** `app/models/__init__.py` imports
+  every model for exactly this reason; a model in an unimported file gets a DROP migration written
+  for it.
+
+### React / Apollo / Vite
+- **Apollo Client v4 moved the React bindings** to `@apollo/client/react`, and `ErrorLink` /
+  `SetContextLink` replaced `onError` / `setContext`. Every v3 tutorial fails with
+  "has no exported member 'useQuery'", which reads like a broken install.
+- **v4 infers `{}` for an untyped `gql` document**, so every field access is a compile error until
+  a type parameter is supplied. v3 inferred `any` and let it through.
+- **`keyFields` obliges EVERY selection of that type to include them.** A nested
+  `property { title city }` throws "Missing field 'publicId' while extracting keyFields" when the
+  result is written — an error that names the cache, not the query that caused it.
+- **⚠️ No backticks inside a `gql` template.** It is a template literal, so a backtick in a GraphQL
+  comment ends the string, and the parse error points at the line AFTER the comment.
+- **Clear the Apollo cache when identity changes.** Apollo has no idea the token changed, so
+  without it a signed-out user keeps seeing the previous user's bookings from cache, with no
+  request to notice.
+- **A route guard must wait for the auth `loading` flag.** Reviving a session is async, so `user`
+  is null on the first render — redirecting immediately bounces every signed-in user to /login on
+  a hard refresh, and never while clicking around.
+- **The two dev apps need DIFFERENT localStorage keys.** localStorage is scoped to the origin, not
+  the port, so a shared key means signing into the admin console silently makes the customer site
+  act as staff.
+- **Tailwind v4 is a Vite PLUGIN**, not a PostCSS one. No `tailwind.config.js`; tokens live in
+  `@theme` in CSS. Following a v3 tutorial produces a build that runs and applies no styles.
+
+### Playwright
+- **`page.waitForURL()` waits for a NAVIGATION event**, which React Router never fires — it hangs
+  until timeout. It also only observes from the moment it is called, so a redirect that already
+  happened is missed. Use `expect(page).not.toHaveURL(...)`, which polls.
+- **Retry the NAVIGATION, not the assertion**, when waiting on Elasticsearch. Playwright's
+  auto-retry re-checks the DOM; the page will not refetch on its own. `expect(async () => {…}).toPass()`.
+- **`div.flex-col` matches every ancestor too**, so `.first()` silently grabs the page wrapper.
+  Use a `data-testid`, and scope by the id of the row the test itself created.
+
+### Pydantic / FastAPI
+- **A field named `property` shadows the builtin `@property` inside the class body.** A
+  `@property` written after it dies with *"TypeError: 'NoneType' object is not callable"*, pointing
+  at the decorator and saying nothing about the field. `schemas/booking.py` captures the builtin
+  under another name first.
+- **`model_validate()` has no `update=` kwarg** — that is `model_copy`. Derived output fields want
+  `@computed_field`, which also keeps them out of the input schema.
+- **`@computed_field` only appears in `model_json_schema(mode="serialization")`**, not the default
+  validation schema.
+- **`EmailStr` rejects `@stayhub.test`** — RFC 6761 reserves `.test` so it can never be real, which
+  is why it is the right demo TLD and why the validator refuses it. `email_validator.TEST_ENVIRONMENT
+  = True` in `schemas/common.py` allows it.
+- **`EmailStr` needs `pydantic[email]`** or the app fails at import, not at request time.
+- **`allow_credentials=True` forbids `allow_origins=["*"]`** — origins must be named.
+
+### Elasticsearch
+- **Indexing happens AFTER the commit, never before**, or a rolled-back transaction leaves a
+  listing in search results that 404s when clicked.
+- **Index failures are logged, never raised.** A search cluster restarting must not fail a host's
+  save. `POST /api/v1/admin/search/reindex` is the repair path.
+- **Unpublished listings are DELETED from the index, not flagged.** One forgotten `.filter()` on a
+  status field leaks a draft into public results; absent cannot leak.
+- **ES is near-real-time** — index then immediately search finds nothing. `refresh_index()` exists
+  for tests and seeding only.
