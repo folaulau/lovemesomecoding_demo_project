@@ -1,0 +1,132 @@
+# Build the pizza images and push them to GitHub Container Registry.
+#
+# Quoted by lesson 20 of the /docker track on lovemesomecoding.com.
+#
+# ⚠️ This workflow is NOT currently wired to a repository — lovemesomecoding_demo_project has no
+# GitHub remote yet, so it has never run. It is written to be correct rather than to be proven, and
+# that distinction is recorded here rather than left for someone to discover. Everything it does
+# was verified locally with the equivalent `docker buildx` commands.
+
+name: docker
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  # Tests run in their OWN job, before any image is built. The image Dockerfile uses
+  # -DskipTests deliberately: a build that also tests makes every image build pay for the test
+  # suite, and reports a test failure as a build failure with no useful output. Here a failure is
+  # reported against the commit, with the report attached, and no image is produced at all.
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: temurin
+          # Caches ~/.m2 keyed on the pom files. Without it every run re-downloads
+          # the whole dependency tree — the CI equivalent of getting the COPY order
+          # wrong in a Dockerfile.
+          cache: maven
+
+      - name: Run the test suite
+        working-directory: pizza-springboot-backend
+        run: ./mvnw -B test
+
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+
+    # ⚠️ These permissions are what let the job push WITHOUT a stored password.
+    # GITHUB_TOKEN is minted per run, scoped to this repository, and expires when the
+    # job ends — so there is no long-lived registry credential in the repository
+    # secrets to leak or rotate. `packages: write` is the one that grants the push.
+    permissions:
+      contents: read
+      packages: write
+
+    strategy:
+      # One job per image, in parallel, and one failing image does not cancel the others.
+      fail-fast: false
+      matrix:
+        include:
+          - name: pizza-api
+            context: ./pizza-springboot-backend
+          - name: pizza-web
+            context: ./pizza-react-frontend
+          - name: pizza-web-angular
+            context: ./pizza-angular-frontend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # QEMU, so the amd64 runner can also produce arm64 layers. Emulated builds are
+      # several times slower than native — see lesson 19 — which is the price of one
+      # manifest that runs on both a developer's Apple Silicon laptop and an x86 server.
+      - uses: docker/setup-qemu-action@v3
+
+      # buildx. The default `docker build` on a runner cannot do multi-platform,
+      # inline cache, or push without loading the image locally first.
+      - uses: docker/setup-buildx-action@v3
+
+      # ⚠️ Skipped on pull requests, because a PR from a fork gets a read-only token
+      # and this step would fail. The build below still runs — it just does not push,
+      # which is exactly what you want from an untrusted PR.
+      - name: Log in to the registry
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Derives the tags from the git ref rather than hard-coding them, which is what
+      # makes "what is running in production?" answerable. A push to main gets
+      # :main and :sha-<commit>; a v1.4.2 tag also gets :1.4.2, :1.4 and :latest.
+      #
+      # ⚠️ `latest` is produced here but should not be what a deployment references.
+      # It is a moving pointer: two servers pulling `:latest` a minute apart can end
+      # up on different images, and a rollback has nothing to roll back to. Deploy the
+      # immutable :sha- tag and keep :latest for humans typing `docker run`.
+      - name: Work out the tags
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ github.repository }}/${{ matrix.name }}
+          tags: |
+            type=ref,event=branch
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,prefix=sha-
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          platforms: linux/amd64,linux/arm64
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+          # ⚠️ THE line that decides whether CI takes two minutes or twelve.
+          #
+          # A runner is a fresh machine with an EMPTY layer cache, so without this
+          # every run reinstalls every dependency from scratch — the caching work done
+          # in the Dockerfile buys nothing in CI, where it is needed most.
+          # `type=gha` stores the layer cache in GitHub's own Actions cache.
+          #
+          # mode=max caches intermediate stages too, not just the final one. For a
+          # multi-stage build that is the whole point: the expensive layer is `npm ci`
+          # or `mvn package` in the BUILD stage, which never appears in the result.
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

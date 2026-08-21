@@ -1,0 +1,30 @@
+# Excluded from the build context. See pizza-react-frontend/.dockerignore for
+# the full reasoning; the entries below are the Angular-specific ones.
+
+# ~500 MB, and full of binaries built for THIS machine. The build runs npm ci
+# inside Alpine Linux and needs Linux binaries.
+node_modules/
+
+# Build output — the image builds its own.
+dist/
+
+# The Angular CLI's build cache. Machine-specific, and large.
+.angular/
+
+# Playwright output.
+test-results/
+playwright-report/
+screenshots/
+e2e/
+
+.env
+.env.local
+
+.git/
+.gitignore
+.idea/
+.vscode/
+
+README.md
+Dockerfile
+.dockerignore

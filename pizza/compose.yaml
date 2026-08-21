@@ -1,0 +1,225 @@
+# The whole pizza application, containerised.
+#
+#   docker compose up -d --build          # mysql + api + web (React)
+#   docker compose --profile angular up -d --build   # ... plus the Angular build
+#   docker compose ps                     # what is running, and is it healthy
+#   docker compose logs -f api            # follow one service
+#   docker compose down                   # stop (the database survives)
+#   docker compose down -v                # stop AND wipe the database
+#
+#   React app     http://localhost:8080
+#   Angular app   http://localhost:4201   (profile: angular)
+#   API           http://localhost:8086   (swagger-ui at /swagger-ui.html)
+#   MySQL         localhost:3309          root, empty password, database `pizza`
+#
+# ⚠️ Every host port here is shifted off the one the DEVELOPMENT setup uses, so
+# both can run at once. pizza-springboot-backend/docker-compose.yml publishes
+# MySQL on 3308, `./mvnw spring-boot:run` binds 8085, `ng serve` binds 4200 and
+# `vite` binds 5173. A host port can only be claimed once, no matter which
+# container or process claims it, and the failure is a bind error at `up` time
+# that says nothing about the other stack.
+#
+# ---------------------------------------------------------------------------------------------
+# ⚠️ THIS IS NOT pizza-springboot-backend/docker-compose.yml
+#
+# That file is the DEVELOPMENT loop: it starts the backing services only — MySQL,
+# and Elasticsearch / Artemis / Mailpit behind profiles — and you run the app
+# itself with `./mvnw spring-boot:run`, so a code change is a restart rather than
+# an image rebuild. Keep using it for day-to-day work.
+#
+# THIS file is the deployment shape: everything in containers, including the app,
+# built from the Dockerfiles next to each project. It is what the /docker tutorial
+# track on lovemesomecoding.com is written against. Use it to see the whole stack
+# stand up from nothing, not to develop against.
+# ---------------------------------------------------------------------------------------------
+
+# Names the project, and therefore the default network (`pizza_default`), the
+# volume prefixes and the container names. Without it Compose uses the directory
+# name — which works until someone clones the repo into a differently-named
+# folder and gets a second, empty set of volumes.
+name: pizza
+
+services:
+
+  # ---------------------------------------------------------------- MySQL
+  # ⚠️ NO `container_name:` on any service in this file, deliberately.
+  #
+  # A container name is global to the daemon, so hard-coding `pizza-mysql` here
+  # would collide with the identically-named container from
+  # pizza-springboot-backend/docker-compose.yml, and `up` fails with "the
+  # container name is already in use". Left off, Compose names them from the
+  # project: pizza-mysql-1, pizza-api-1, pizza-web-1. It also means `--scale`
+  # works, which a fixed name makes impossible.
+  #
+  # Address services by SERVICE name (`docker compose logs api`), not by
+  # container name, and this never comes up.
+  mysql:
+    image: mysql:8.4
+    restart: unless-stopped
+    ports:
+      # 3309 on the host, 3306 in the container. The host side is shifted twice
+      # over: 3306 is a native MySQL on this machine and 3308 is the development
+      # compose file's. The CONTAINER side is not shifted and must not be — it is
+      # what `api` connects to over the network below.
+      - "3309:3306"
+    environment:
+      MYSQL_ALLOW_EMPTY_PASSWORD: "yes"
+      # Liquibase creates the tables, but not the schema that holds them. Without
+      # this the API dies at startup with "Unknown database 'pizza'".
+      MYSQL_DATABASE: pizza
+    command:
+      # utf8mb4 end to end. MySQL's older utf8 is a 3-byte encoding that cannot
+      # store an emoji, and a pizza menu is exactly where someone will paste one.
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_0900_ai_ci
+    healthcheck:
+      # ⚠️ This is what makes `depends_on: condition: service_healthy` mean
+      # anything. A container is "started" the instant its process launches,
+      # several seconds before MySQL accepts a connection — so without a
+      # healthcheck the API races it and dies on a connection refused that reads
+      # like a database bug.
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+    volumes:
+      # A named volume, so the data outlives the container. Without it every
+      # `compose down` wipes the database — which is fine right up until it is not.
+      - mysql-data:/var/lib/mysql
+
+  # ---------------------------------------------------------------- the API
+  api:
+    build:
+      context: ./pizza-springboot-backend
+      # `dockerfile:` is omitted — ./Dockerfile relative to the context is the
+      # default. The CONTEXT is the argument that matters: it is the directory
+      # uploaded to the builder, and every COPY path is relative to it.
+      target: runtime
+    image: pizza-api:dev
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        # ⚠️ `service_started` — the default, and what a bare `depends_on: [mysql]`
+        # gives you — only waits for the container to exist. This waits for the
+        # healthcheck above to pass.
+        condition: service_healthy
+    ports:
+      # ⚠️ NEITHER frontend needs this. Both are served by nginx, which proxies
+      # /api/ to `api:8085` over the compose network — a path the host never
+      # touches. It is published only so swagger-ui and `curl` work from your
+      # terminal.
+      #
+      # 8086 on the host because `./mvnw spring-boot:run` already binds 8085.
+      # The container side stays 8085, because that is what server.port says and
+      # what nginx.conf proxies to.
+      - "8086:8085"
+    environment:
+      # ⚠️ `mysql` is the SERVICE NAME, resolved by Docker's embedded DNS on the
+      # project network, and 3306 is the port INSIDE that container. Writing
+      # `127.0.0.1:3308` here — the values that work from the host — is the single
+      # most common mistake in this file: inside a container, 127.0.0.1 is the
+      # container itself, which runs no database.
+      #
+      # No new application-*.properties file is needed for any of this. Spring
+      # Boot's relaxed binding maps SPRING_DATASOURCE_URL onto the
+      # `spring.datasource.url` property, so the environment overrides the file.
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/pizza?useSSL=false&allowPublicKeyRetrieval=true&connectionTimeZone=LOCAL&preserveInstants=false
+      SPRING_DATASOURCE_USERNAME: root
+      SPRING_DATASOURCE_PASSWORD: ""
+      # ⚠️ NOT set: PIZZA_CORS_ALLOWED_ORIGINS.
+      #
+      # It would be needed if the browser called the API on a different origin —
+      # and that is worth understanding, because it is the usual reason a
+      # containerised SPA works locally and 403s in a container. It is not needed
+      # here precisely BECAUSE both frontends go through their own nginx: same
+      # scheme, same host, same port, so the browser never makes a cross-origin
+      # request and never sends a preflight.
+      #
+      # ⚠️ Not a real secret, and not how you would supply one. See the note at
+      # the bottom of this file.
+      PIZZA_JWT_SECRET: local-compose-only-not-a-real-secret-at-least-32-bytes
+      # Stripe keys are read from the HOST environment if set, and default to
+      # empty. `${VAR:-default}` is Compose's interpolation, evaluated on the
+      # host before the container starts — it has nothing to do with the shell
+      # inside the container.
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      STRIPE_PUBLISHABLE_KEY: ${STRIPE_PUBLISHABLE_KEY:-}
+    volumes:
+      # Product images are written to ./uploads/products inside the container.
+      # Without this volume every `compose down` loses them.
+      - api-uploads:/app/uploads
+
+  # ---------------------------------------------------------------- React app
+  web:
+    build:
+      context: ./pizza-react-frontend
+      args:
+        # ⚠️ EMPTY on purpose. It makes the bundle request /api/... on its own
+        # origin, which nginx.conf proxies to `api` over the compose network — so
+        # the browser only ever sees one origin and CORS never applies.
+        #
+        # This is a BUILD arg, not an environment variable: it is compiled into
+        # the JavaScript. Changing it means rebuilding the image, and
+        # `docker compose up` will NOT rebuild on its own — pass --build.
+        VITE_API_BASE_URL: ""
+    image: pizza-web:dev
+    restart: unless-stopped
+    depends_on:
+      # Only `service_started`, and that is right: nginx serves static files
+      # perfectly well before the API is up, and the proxy resolves `api` lazily,
+      # per request. Waiting for the API here would delay the login page for no
+      # benefit.
+      - api
+    ports:
+      # 8080 on the host, 8080 in the container. The container side is 8080
+      # rather than 80 because nginx-unprivileged does not run as root and cannot
+      # bind a port below 1024.
+      - "8080:8080"
+
+  # ---------------------------------------------------------------- Angular app
+  web-angular:
+    # Behind a profile, so the default `docker compose up` builds one frontend
+    # rather than two. `docker compose --profile angular up -d` includes it.
+    profiles: ["angular"]
+    build:
+      context: ./pizza-angular-frontend
+    image: pizza-web-angular:dev
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      # 4201, because `ng serve` binds 4200.
+      - "4201:8080"
+    # ⚠️ No `args:` here, and that is the contrast worth noticing. This image
+    # reaches the same relative-URL result as `web` above, but it needs an extra
+    # source file and an extra angular.json configuration to do it, because
+    # Angular has no build-time variable substitution. See
+    # pizza-angular-frontend/Dockerfile.
+
+volumes:
+  # Declared here, created by Compose, and prefixed with the project name:
+  # `pizza_mysql-data`. `docker compose down` leaves them; `down -v` deletes them.
+  mysql-data:
+  api-uploads:
+
+# ---------------------------------------------------------------------------------------------
+# ⚠️ ON THE SECRETS IN THIS FILE
+#
+# PIZZA_JWT_SECRET is committed, which is only acceptable because it is a
+# throwaway that signs tokens for a demo on your own machine. It is here so the
+# stack starts with one command and nobody has to invent a value.
+#
+# Anywhere reachable, an environment variable is already the wrong mechanism:
+# `docker inspect` prints it, it is in the compose file in git, and it lands in
+# every log that dumps the environment. Real options, roughly in order of effort:
+#
+#   - a gitignored `.env` next to this file, which Compose reads automatically.
+#     Keeps it out of git; still visible to `docker inspect`.
+#   - Docker's own `secrets:`, which mounts the value as a file at
+#     /run/secrets/<name> rather than putting it in the environment.
+#   - a real secret store — AWS Secrets Manager, Vault — fetched at startup.
+#
+# The Stripe keys above are already handled the first way: they are read from the
+# host environment and default to empty, so nothing real is ever written here.
+# ---------------------------------------------------------------------------------------------

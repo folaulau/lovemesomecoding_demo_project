@@ -1,0 +1,45 @@
+# Everything listed here is excluded from the BUILD CONTEXT — the tar of this
+# directory that `docker build .` uploads to the builder before it reads the
+# first instruction in the Dockerfile.
+#
+# Without this file the context is ~900 MB, almost all of it target/ and the
+# uploaded images, and every build pays to send it. With it the context is a
+# couple of MB.
+#
+# It is also a correctness control, not only a speed one. target/ holds classes
+# compiled by the JDK on THIS machine; letting them into the context risks the
+# build reusing them instead of compiling fresh, which is how "it works locally"
+# becomes an image nobody can reproduce.
+
+# Build output — the image compiles its own.
+target/
+
+# The wrapper downloads this on first run. It is gitignored, and a jar copied
+# from the host is one more thing that might not match the wrapper properties.
+.mvn/wrapper/maven-wrapper.jar
+
+# Uploaded product images. Runtime data, not source.
+uploads/
+
+# ⚠️ Secrets. application-local.properties holds real Stripe test keys and the
+# JWT signing secret. A file copied into an image is in a layer FOREVER — you
+# cannot delete it in a later instruction, because the layer that added it is
+# still there and `docker history` will hand it to anyone who pulls the image.
+src/main/resources/application-local.properties
+src/main/resources/application-*.local.properties
+.env
+.env.local
+
+# Editor and VCS noise.
+.git/
+.gitignore
+.gitattributes
+.idea/
+.vscode/
+*.iml
+
+# Not needed to build, and changing one would bust the cache for no reason.
+HELP.md
+docker-compose.yml
+Dockerfile
+.dockerignore

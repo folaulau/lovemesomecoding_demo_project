@@ -1,0 +1,36 @@
+# Excluded from the build context — the tar of this directory that `docker build .`
+# uploads before it reads the first Dockerfile instruction.
+#
+# node_modules is the entry that matters. It is ~400 MB here, and sending it
+# would be slow AND wrong: it holds native binaries compiled for THIS machine's
+# OS and architecture, and the build runs `npm ci` inside Alpine Linux. A macOS
+# esbuild binary in a Linux container fails at build time with an error that
+# blames esbuild rather than the copy.
+node_modules/
+
+# The image builds its own. A stale dist/ from a local `npm run build` could
+# otherwise be copied over the fresh one.
+dist/
+
+# Playwright output — large, and regenerated.
+test-results/
+playwright-report/
+screenshots/
+e2e/
+
+# ⚠️ .env.local holds the real Stripe test key. Anything copied into an image is
+# in that layer permanently: deleting it in a later instruction leaves the layer
+# behind, and `docker history` hands it to anyone who can pull the image.
+.env
+.env.local
+
+# Editor and VCS noise.
+.git/
+.gitignore
+.idea/
+.vscode/
+
+# Not needed to build, and a change to one would bust the cache for no reason.
+README.md
+Dockerfile
+.dockerignore
