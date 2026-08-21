@@ -7,7 +7,12 @@ pydantic[email]==2.10.3
 pydantic-settings==2.6.1
 
 # Persistence
-SQLAlchemy==2.0.36
+# ⚠️ The [asyncio] extra, not a bare `SQLAlchemy`. SQLAlchemy's async layer is a greenlet bridge
+# over the sync core, so `create_async_engine` needs `greenlet` — which the bare install does NOT
+# pull in. Without it everything imports fine and the first async query dies at CLOSE time with
+# "ValueError: the greenlet library is required to use this function", pointing at
+# sqlalchemy/util/concurrency.py rather than at anything you wrote.
+SQLAlchemy[asyncio]==2.0.36
 psycopg[binary]==3.2.3
 alembic==1.14.0
 

@@ -62,15 +62,24 @@ FastAPI, SQLAlchemy 2.0 (typed ORM), Alembic, Postgres.
 
 ```
 app/
-├── core/          config · security (JWT + bcrypt) · deps · exceptions
-├── db/            base (mixins) · session
+├── core/          config · security (JWT + bcrypt) · deps · exceptions · logging · middleware
+├── db/            base (mixins) · session · async_session
 ├── models/        SQLAlchemy entities + enums
-├── schemas/       pydantic DTOs — the camelCase boundary
+├── schemas/       pydantic DTOs — the camelCase boundary, and Page[T]
 ├── repositories/  the ONLY place that knows SQLAlchemy exists
-├── services/      business rules — pricing, booking, cancellation policy, payments
+├── services/      business rules — pricing, booking, cancellation policy, payments, notifications
 ├── search/        client · index mapping · indexer (the Postgres → ES sink) · queries
-└── api/v1/routes/ auth · properties · bookings · payments · search · admin
+└── api/v1/routes/ auth · properties · bookings · payments · search · admin · uploads
 ```
+
+**Running it in a container** (added 2026-08-21, for the `/fastapi` tutorial track):
+
+```bash
+docker compose --profile api up -d --build     # API in a container on :8000
+```
+
+⚠️ Opt-in via a profile because the host `uvicorn --reload` workflow above is better for
+development and both bind :8000. `docker compose up -d` is unchanged — backing services only.
 
 **Layer rules, in priority order:**
 
@@ -116,6 +125,14 @@ page reads — that is a value, not a state machine. Apollo's cache is the serve
 - **Staff cannot deactivate themselves.** With one admin that locks everyone out permanently.
 - **Never put `x-hasura-admin-secret` in a frontend.** It bypasses every permission rule. Hasura's
   own quickstart does this; it is fine in a script and catastrophic in a bundle.
+- **Uploads are validated by their BYTES, not their `Content-Type`.** That header is whatever the
+  client typed. `app/api/v1/routes/uploads.py` sniffs the magic bytes and requires them to match
+  the declared type, generates the stored filename rather than trusting `file.filename`, and caps
+  size DURING the stream.
+- **CORSMiddleware must stay OUTSIDE RequestContextMiddleware** in `main.py`. `add_middleware`
+  inserts at the front, so the last call is outermost. Swap them and every 500 reaches the browser
+  with no CORS headers, so the frontend reports a CORS failure and never sees the error body.
+  `tests/test_api_middleware.py` fails if you do.
 - The demo credentials in the footer are acceptable **only** because they are throwaway local
   fixtures. If this ever points at real data, that block is the first thing to delete.
 
@@ -180,7 +197,7 @@ production.
 ## Test
 
 ```bash
-cd stayhub-fastapi-backend && .venv/bin/python -m pytest -q      # 58 — needs Postgres
+cd stayhub-fastapi-backend && .venv/bin/python -m pytest -q      # 100 — needs Postgres
 cd stayhub-react-frontend && npm run test:e2e                    # 33 — needs everything running
 cd stayhub-react-admin-frontend && npm run test:e2e              #  7
 npm run screenshots                                              # regenerate screenshots/

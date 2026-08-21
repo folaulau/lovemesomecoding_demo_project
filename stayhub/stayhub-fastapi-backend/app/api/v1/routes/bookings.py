@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from fastapi import APIRouter, status
+from fastapi import APIRouter, BackgroundTasks, status
 
 from app.core.deps import CurrentUser, DbSession, HostUser
 from app.core.exceptions import NotFoundException
@@ -14,6 +14,7 @@ from app.schemas.booking import (
     QuoteRequest,
 )
 from app.models.booking import Booking
+from app.services import notification_service
 from app.services.booking_service import BookingService
 
 router = APIRouter(prefix="/bookings", tags=["bookings"])
@@ -46,13 +47,22 @@ def availability(property_id: UUID, db: DbSession) -> AvailabilityResponse:
 
 @router.post("", response_model=BookingResponse, status_code=status.HTTP_201_CREATED)
 def create_booking(
-    payload: BookingCreateRequest, user: CurrentUser, db: DbSession
+    payload: BookingCreateRequest, user: CurrentUser, db: DbSession, background: BackgroundTasks
 ) -> BookingResponse:
     """Hold the dates. The booking is PENDING until payment succeeds.
 
     ⚠️ The body carries no price. Every figure is computed server-side from the listing.
     """
-    return _to_response(BookingService(db).create(user, payload))
+    booking = BookingService(db).create(user, payload)
+
+    # ⚠️ Queued AFTER create() returned, never before. A task added earlier still runs even if
+    # create() then raises — Starlette runs whatever is on the response's task list, and a failed
+    # request that emails "your dates are held" is worse than no email at all.
+    #
+    # Note it is handed `booking.public_id`, not `booking`. See notification_service for why the
+    # obvious version half-works.
+    background.add_task(notification_service.send_booking_confirmation, booking.public_id)
+    return _to_response(booking)
 
 
 @router.get("/mine", response_model=list[BookingResponse])
@@ -78,7 +88,11 @@ def get_booking(public_id: UUID, user: CurrentUser, db: DbSession) -> BookingRes
 
 @router.post("/{public_id}/cancel", response_model=BookingResponse)
 def cancel_booking(
-    public_id: UUID, payload: BookingCancelRequest, user: CurrentUser, db: DbSession
+    public_id: UUID,
+    payload: BookingCancelRequest,
+    user: CurrentUser,
+    db: DbSession,
+    background: BackgroundTasks,
 ) -> BookingResponse:
     """Cancel, subject to the 2-days-before-check-in rule.
 
@@ -88,4 +102,6 @@ def cancel_booking(
     booking = BookingRepository(db).get_by_public_id_full(public_id)
     if booking is None:
         raise NotFoundException("Booking not found.")
-    return _to_response(BookingService(db).cancel(booking, user, payload.reason))
+    cancelled = BookingService(db).cancel(booking, user, payload.reason)
+    background.add_task(notification_service.send_cancellation_notice, cancelled.public_id)
+    return _to_response(cancelled)

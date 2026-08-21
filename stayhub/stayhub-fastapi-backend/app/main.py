@@ -12,13 +12,16 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.v1.router import api_router
+from app.api.v1.routes.uploads import mount_static
 from app.core.config import settings
 from app.core.exceptions import register_exception_handlers
+from app.core.logging import configure_logging
+from app.core.middleware import RequestContextMiddleware
 from app.schemas.common import ApiModel
 from app.search.client import es_available, get_es
 from app.search.index import ensure_index
 
-logging.basicConfig(level=logging.INFO, format="%(levelname)-5.5s [%(name)s] %(message)s")
+configure_logging(level=settings.log_level, json_output=settings.log_json)
 logger = logging.getLogger(__name__)
 
 
@@ -57,6 +60,18 @@ app = FastAPI(
     docs_url="/docs",
 )
 
+# ⚠️ ORDER IS LOAD-BEARING, and it reads backwards.
+#
+# `add_middleware` INSERTS AT THE FRONT of the list, so the LAST call here is the OUTERMOST
+# layer. These two are therefore added inner-first: RequestContextMiddleware, then CORS around it.
+#
+# CORS MUST be outside. RequestContextMiddleware turns an unhandled exception into a 500 response
+# (see the ⚠️ in core/middleware.py); CORS only adds `Access-Control-Allow-Origin` to responses
+# that pass back through it. Swap these two calls and every 500 reaches the browser without CORS
+# headers, the browser reports a CORS failure instead, and the frontend's error parser never sees
+# the body. Verified both ways on 2026-08-21.
+app.add_middleware(RequestContextMiddleware)
+
 # ⚠️ allow_credentials=True forbids `allow_origins=["*"]` — the browser rejects a wildcard when
 # credentials are involved, and the failure shows up as a CORS error with no useful detail. The
 # origins are therefore named explicitly in config.py.
@@ -70,6 +85,9 @@ app.add_middleware(
 
 register_exception_handlers(app)
 app.include_router(api_router, prefix=settings.api_v1_prefix)
+
+# Serves uploaded listing photos. See the ⚠️ in routes/uploads.py — a CDN does this in production.
+mount_static(app)
 
 
 class Health(ApiModel):

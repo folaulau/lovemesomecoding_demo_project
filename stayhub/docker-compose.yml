@@ -154,6 +154,49 @@ services:
       timeout: 5s
       retries: 20
 
+  # ---------------------------------------------------------------------------------------------
+  # The API, containerised. OPT-IN via a profile.
+  #
+  #     docker compose up -d                    # backing services only — the default, unchanged
+  #     docker compose --profile api up -d      # backing services PLUS the API in a container
+  #
+  # ⚠️ It is behind a profile because the documented workflow runs uvicorn on the HOST with
+  # --reload, which is far better for development. Both bind port 8000, so running this while the
+  # host uvicorn is up fails with "port is already allocated". That is the intended, obvious
+  # failure — the alternative was a second port that nothing else in the project knows about.
+  api:
+    build:
+      context: ./stayhub-fastapi-backend
+    image: stayhub-api:local
+    container_name: stayhub-api
+    profiles: ["api"]
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    environment:
+      # ⚠️ `postgres:5432` and `elasticsearch:9200` — the SERVICE NAME and the container's own
+      # port. The 5433 in the host workflow is a host-side publish only and means nothing inside
+      # this network. Same trap the hasura service documents above; it catches everyone once.
+      STAYHUB_DATABASE_URL: postgresql+psycopg://stayhub:stayhub@postgres:5432/stayhub
+      STAYHUB_ELASTICSEARCH_URL: http://elasticsearch:9200
+      # Must match the hasura service's HASURA_GRAPHQL_JWT_SECRET key, above.
+      STAYHUB_JWT_SECRET: dev-only-change-me-in-any-real-deployment-0123456789
+      STAYHUB_LOG_JSON: "true"
+      # `localhost` here is the BROWSER's localhost — the Vite dev servers on the host machine —
+      # not the container's. CORS is judged by what the browser sends in `Origin`.
+      STAYHUB_CORS_ORIGINS: '["http://localhost:5174","http://localhost:5175"]'
+    volumes:
+      # Uploads must outlive the container. Without this, every restart silently loses every photo
+      # a host ever added — the container filesystem is not storage.
+      - stayhub-uploads:/app/uploads
+
+
 volumes:
   stayhub-pgdata:
   stayhub-esdata:
+  stayhub-uploads:

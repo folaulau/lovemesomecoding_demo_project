@@ -31,6 +31,16 @@ class Settings(BaseSettings):
     elasticsearch_url: str = "http://localhost:9200"
     elasticsearch_index: str = "stayhub-properties"
 
+    log_level: str = "INFO"
+    # Human-readable locally, JSON wherever something is collecting it. Default off so `uvicorn
+    # --reload` stays readable; the Dockerfile sets STAYHUB_LOG_JSON=true.
+    log_json: bool = False
+
+    # Uploads. 5 MB is generous for a listing photo and small enough that a hostile client cannot
+    # fill the disk one request at a time.
+    max_upload_bytes: int = 5 * 1024 * 1024
+    upload_dir: str = "uploads"
+
     stripe_secret_key: str = ""
     stripe_webhook_secret: str = ""
     # Public by design — it identifies the account and can only create payment attempts, never

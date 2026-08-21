@@ -9,7 +9,10 @@ Hasura is configured to do the same (`HASURA_GRAPHQL_DEFAULT_NAMING_CONVENTION: 
 so the frontends see one consistent shape whichever API answered.
 """
 
+from typing import Annotated, Generic, TypeVar
+
 import email_validator
+from fastapi import Depends, Query
 from pydantic import BaseModel, ConfigDict
 from pydantic.alias_generators import to_camel
 
@@ -43,3 +46,62 @@ class ErrorBody(ApiModel):
 
     message: str
     field_errors: dict[str, str] = {}
+
+
+# ---------------------------------------------------------------------------
+# Pagination
+# ---------------------------------------------------------------------------
+
+T = TypeVar("T")
+
+
+class PageParams(ApiModel):
+    """`?page=2&pageSize=50`, validated once and reused everywhere.
+
+    A dependency rather than three repeated `Query(...)` arguments per route. The bounds are the
+    point: without `le=100` a client can ask for `pageSize=1000000` and page one becomes a full
+    table scan serialised into memory — pagination that protects nothing.
+    """
+
+    page: int = 1
+    page_size: int = 20
+
+    @property
+    def offset(self) -> int:
+        return (self.page - 1) * self.page_size
+
+
+def page_params(
+    page: int = Query(default=1, ge=1, description="1-based"),
+    page_size: int = Query(default=20, ge=1, le=100, alias="pageSize"),
+) -> PageParams:
+    return PageParams(page=page, page_size=page_size)
+
+
+PageQuery = Annotated[PageParams, Depends(page_params)]
+
+
+class Page(ApiModel, Generic[T]):
+    """A page of results, plus what the caller needs to ask for the next one.
+
+    ⚠️ Returning a bare `list[T]` is the mistake this exists to prevent. A list has nowhere to put
+    the total, so the client cannot render "page 3 of 12" or even know whether to show a Next
+    button — and by the time you discover that, the endpoint is public and changing its shape is a
+    breaking change. `SearchResponse` predates this class and hand-rolls the same four fields.
+
+    `Page[PropertyResponse]` produces a distinct schema in the OpenAPI document, so a generated
+    client gets a real type rather than `any`.
+    """
+
+    items: list[T]
+    total: int
+    page: int
+    page_size: int
+
+    @property
+    def pages(self) -> int:
+        return (self.total + self.page_size - 1) // self.page_size if self.page_size else 0
+
+    @classmethod
+    def of(cls, items: list[T], total: int, params: PageParams) -> "Page[T]":
+        return cls(items=items, total=total, page=params.page, page_size=params.page_size)

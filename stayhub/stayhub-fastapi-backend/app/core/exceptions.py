@@ -55,6 +55,18 @@ def _body(message: str, field_errors: dict[str, str] | None = None) -> dict:
     return {"message": message, "fieldErrors": field_errors or {}}
 
 
+# The generic 500. Deliberately a module-level function rather than something buried inside the
+# handler below, because TWO places have to produce this exact response — see the ⚠️ in
+# register_exception_handlers — and the frontends parse one error shape, not two.
+UNHANDLED_MESSAGE = "Something went wrong on our end."
+
+
+def unhandled_response() -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, content=_body(UNHANDLED_MESSAGE)
+    )
+
+
 def register_exception_handlers(app: FastAPI) -> None:
     @app.exception_handler(ApiException)
     async def _api_exception(_: Request, exc: ApiException) -> JSONResponse:
@@ -77,10 +89,27 @@ def register_exception_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(Exception)
     async def _unhandled(_: Request, exc: Exception) -> JSONResponse:
-        # Log the real reason, return a generic one. A stack trace in a response body is a gift
-        # to whoever is probing the API.
+        """Backstop only. In practice RequestContextMiddleware gets there first.
+
+        ⚠️ Starlette does NOT put a handler registered for bare `Exception` in the same place as
+        the others. The specific handlers above live in ExceptionMiddleware, which is the
+        INNERMOST layer — inside CORS, inside everything. A handler for `Exception` instead
+        becomes ServerErrorMiddleware's handler, and that is the OUTERMOST layer of the whole
+        stack.
+
+        The consequence is not theoretical. A response built out there has already skipped every
+        user middleware on the way back, so it carries no CORS headers — and a browser shown a
+        500 with no `Access-Control-Allow-Origin` reports a CORS failure and never exposes the
+        body. The frontend's error parser sees nothing at all.
+
+        Measured on 2026-08-21, before the fix:
+
+            unhandled 500 -> X-Request-ID absent, Access-Control-Allow-Origin absent
+            handled   404 -> X-Request-ID present, Access-Control-Allow-Origin present
+
+        So RequestContextMiddleware — which runs INSIDE CORS — catches unhandled exceptions and
+        returns `unhandled_response()` itself. This stays registered for anything that escapes
+        before that middleware is reached.
+        """
         logger.exception("Unhandled error", exc_info=exc)
-        return JSONResponse(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            content=_body("Something went wrong on our end."),
-        )
+        return unhandled_response()

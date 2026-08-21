@@ -1,0 +1,37 @@
+# ⚠️ Without this file the build context is ~400 MB, almost all of it .venv — and it is uploaded
+# to the daemon on EVERY build, before a single instruction runs. A .dockerignore is the single
+# biggest build-speed win in a Python project.
+#
+# It is also a security control. `.env` holds the Stripe secret key; COPY-ing the directory
+# without excluding it bakes that key into an image layer, where it survives even if a later
+# layer deletes the file.
+
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# Secrets. Never in an image.
+.env
+.env.*
+!.env.example
+
+# Test and build noise
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+htmlcov/
+.coverage
+
+# Runtime output — these are volumes, not image content
+uploads/
+notifications/
+
+# VCS and editors
+.git/
+.gitignore
+.idea/
+.vscode/
+*.swp
+.DS_Store
