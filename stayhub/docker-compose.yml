@@ -11,6 +11,41 @@
 #   docker compose up -d          # postgres + hasura + elasticsearch
 #   docker compose down           # stop
 #   docker compose down -v        # stop AND wipe the data
+#
+# ---------------------------------------------------------------------------------------------
+# CREDENTIALS — all of them, in one place
+# ---------------------------------------------------------------------------------------------
+#
+# | Service         | URL                              | Username | Password / secret       |
+# |-----------------|----------------------------------|----------|-------------------------|
+# | Postgres        | localhost:5433  db `stayhub`     | stayhub  | stayhub                 |
+# | Hasura console  | http://localhost:8081            | —        | stayhub-admin-secret    |
+# | Elasticsearch   | http://localhost:9200            | —        | none (security off)     |
+#
+# Connection strings, ready to paste:
+#
+#   psql            psql "postgresql://stayhub:stayhub@localhost:5433/stayhub"
+#   SQLAlchemy      postgresql+psycopg://stayhub:stayhub@localhost:5433/stayhub
+#   Hasura API      curl -H "x-hasura-admin-secret: stayhub-admin-secret" http://localhost:8081/v1/graphql
+#   Elasticsearch   curl http://localhost:9200/_cluster/health
+#
+# Note: `docker exec stayhub-postgres psql -U stayhub -d stayhub` needs NO password, and that is
+# not a misconfiguration — the image trusts connections originating inside the container. Over the
+# published port on 5433, which is how the app and every tool on your machine connect, the password
+# IS enforced: a wrong one is refused.
+#
+# The APP's own logins are seeded by `stayhub-fastapi-backend/scripts/seed.py`, NOT by anything
+# here — these three are infrastructure accounts:
+#
+#   guest@stayhub.test / guest123    a guest
+#   host@stayhub.test  / host123     a guest who also hosts
+#   admin@stayhub.test / admin123    staff (the /admin console on :5175)
+#
+# ⚠️ Every credential above is a throwaway local fixture, checked in ON PURPOSE so the demo runs
+# with one command. That is the ONLY reason it is acceptable to have them in a committed file.
+# Nothing here may be reused anywhere reachable — see the per-service notes below for what each
+# one would need instead. The one secret that is NOT here is the Stripe secret key: it lives in
+# `stayhub-fastapi-backend/.env`, which is gitignored, because that one is real.
 
 name: stayhub
 
@@ -20,6 +55,15 @@ services:
     container_name: stayhub-postgres
     restart: unless-stopped
     environment:
+      # Username, password and database are all `stayhub` — deliberately boring, so the
+      # connection string is memorable and nobody is tempted to write it down elsewhere.
+      #
+      #   host   localhost      port 5433   (5432 INSIDE the compose network — see hasura below)
+      #   user   stayhub
+      #   pass   stayhub
+      #   db     stayhub
+      #
+      # In production these come from a secret store and the password is not the username.
       POSTGRES_USER: stayhub
       POSTGRES_PASSWORD: stayhub
       POSTGRES_DB: stayhub
@@ -46,15 +90,26 @@ services:
     ports:
       - "8081:8080"
     environment:
-      # Inside the compose network Postgres is reachable on its own port, 5432 — the 5433 shift
-      # is a host-side publish only. Using 5433 here is a classic and confusing failure.
+      # Postgres credentials again, as a URL — user `stayhub`, password `stayhub`, db `stayhub`.
+      #
+      # ⚠️ Inside the compose network Postgres is on its OWN port, 5432. The 5433 shift is a
+      # host-side publish only. Using 5433 here is a classic and confusing failure.
       HASURA_GRAPHQL_DATABASE_URL: postgres://stayhub:stayhub@postgres:5432/stayhub
       HASURA_GRAPHQL_ENABLE_CONSOLE: "true"
       HASURA_GRAPHQL_DEV_MODE: "true"
       HASURA_GRAPHQL_ENABLED_LOG_TYPES: startup, http-log, webhook-log, websocket-log, query-log
+      # ⚠️ The admin secret. There is no username — this single value IS the credential, and it
+      # is what the console at http://localhost:8081 asks for. It grants the built-in `admin`
+      # role, which bypasses EVERY permission rule in hasura/metadata.py.
+      #
+      # It belongs in scripts (hasura/scripts/apply.py sends it) and in the console. It must
+      # NEVER reach a browser bundle — that would hand every visitor unrestricted access. Both
+      # frontends send a JWT instead; grep for it in src/ and you will find nothing.
       HASURA_GRAPHQL_ADMIN_SECRET: stayhub-admin-secret
       # Hasura verifies the SAME token FastAPI signs. One login, two services.
-      # The key must match STAYHUB_JWT_SECRET in stayhub-fastapi-backend/.env.
+      # ⚠️ This key must match STAYHUB_JWT_SECRET in stayhub-fastapi-backend/.env exactly. If the
+      # two drift, every authenticated GraphQL query fails while the REST API keeps working —
+      # a confusing way to find out.
       HASURA_GRAPHQL_JWT_SECRET: '{"type":"HS256","key":"dev-only-change-me-in-any-real-deployment-0123456789"}'
       # A request with no Authorization header is treated as this role, so anonymous visitors can
       # browse published listings. Its permissions are still declared in metadata — this only
@@ -79,8 +134,14 @@ services:
     restart: unless-stopped
     environment:
       discovery.type: single-node
-      # Security off is a LOCAL-ONLY shortcut: it removes TLS and the built-in `elastic` password
-      # so the demo needs no certificate dance. Never do this anywhere reachable.
+      # ⚠️ NO CREDENTIALS AT ALL — that is what `xpack.security.enabled: false` means. It removes
+      # TLS and the built-in `elastic` superuser password so the demo needs no certificate dance,
+      # and it leaves http://localhost:9200 open to anything that can reach the port.
+      #
+      # Acceptable only because this is bound to localhost on a development machine. With security
+      # ON you would get a generated `elastic` password (or `bin/elasticsearch-reset-password`)
+      # plus a CA cert the client has to trust — which is the right setup anywhere reachable, and
+      # several steps of ceremony that teach nothing about search.
       xpack.security.enabled: "false"
       ES_JAVA_OPTS: "-Xms512m -Xmx512m"
     ports:

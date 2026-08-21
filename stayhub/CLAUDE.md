@@ -152,6 +152,11 @@ fails CORS, and the symptom is a blank page rather than an error anyone would re
 **Demo logins:** `guest@stayhub.test` / `guest123` · `host@stayhub.test` / `host123` ·
 `admin@stayhub.test` / `admin123`
 
+**Infrastructure credentials** — Postgres, the Hasura admin secret, Elasticsearch — are documented
+in a table at the top of `docker-compose.yml`, next to the values they describe. They are throwaway
+local fixtures, checked in on purpose so the demo runs with one command; the Stripe secret key is
+the one credential that is NOT in a committed file.
+
 ### Stripe
 
 Test mode. The **publishable** key is public by design and goes in each frontend's gitignored
