@@ -15,6 +15,9 @@
 - Hosts must be able to sign up and sign in, add a house to show
 - Use elasticsearch and sink data from postgres for just the houses so searching is fast. Do this sync in the code.
 - User docker composer for services needed. Change port if already taken
+
+- Publishable key: pk_test_51U6lc767a3bv3VDo8tOKoYDkC2hcCd3QpC4tBT5xXvWI4IkCWBZTJSxme7DbJclzKoaDqT1NwzlgMgZVhZ0viW2w00ZJNrSPyg
+- Secret key: sk_test_51U6lc767a3bv3VDoK4Ew6ocFNhSsbik6CtszbAaQMd6JCrT7fXOVUwFWFimorIUU9Px83vN8e6Orwh24l7XmOhff00RRan7iAd
 ---
 
 ## Status
