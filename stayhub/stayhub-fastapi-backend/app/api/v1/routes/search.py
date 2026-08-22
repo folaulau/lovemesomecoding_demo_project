@@ -10,6 +10,7 @@ from decimal import Decimal
 
 from fastapi import APIRouter, Query
 
+from app.core.deps import SearchRateLimit
 from app.core.exceptions import ApiException
 from app.schemas.search import SearchRequest, SearchResponse
 from app.search.client import es_available, get_es
@@ -18,7 +19,7 @@ from app.search.queries import build_query, index_name, to_response
 router = APIRouter(prefix="/search", tags=["search"])
 
 
-@router.get("", response_model=SearchResponse)
+@router.get("", response_model=SearchResponse, dependencies=[SearchRateLimit])
 def search(
     q: str | None = Query(default=None, max_length=200),
     check_in: date | None = Query(default=None, alias="checkIn"),

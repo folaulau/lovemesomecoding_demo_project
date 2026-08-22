@@ -4,11 +4,12 @@
 #   Postgres      5433  (5432 is a native install)
 #   Hasura        8081
 #   Elasticsearch 9200
+#   Redis         6380  (6379 is a native install AND another project's container)
 #
 # The app itself (FastAPI, the two React apps) is NOT in here — it is run from a terminal so it
 # reloads on save. Compose owns only the things that would be a pain to install natively.
 #
-#   docker compose up -d          # postgres + hasura + elasticsearch
+#   docker compose up -d          # postgres + hasura + elasticsearch + redis
 #   docker compose down           # stop
 #   docker compose down -v        # stop AND wipe the data
 #
@@ -21,6 +22,7 @@
 # | Postgres        | localhost:5433  db `stayhub`     | stayhub  | stayhub                 |
 # | Hasura console  | http://localhost:8081            | —        | stayhub-admin-secret    |
 # | Elasticsearch   | http://localhost:9200            | —        | none (security off)     |
+# | Redis           | localhost:6380                   | —        | none (no requirepass)   |
 #
 # Connection strings, ready to paste:
 #
@@ -28,6 +30,7 @@
 #   SQLAlchemy      postgresql+psycopg://stayhub:stayhub@localhost:5433/stayhub
 #   Hasura API      curl -H "x-hasura-admin-secret: stayhub-admin-secret" http://localhost:8081/v1/graphql
 #   Elasticsearch   curl http://localhost:9200/_cluster/health
+#   Redis           redis-cli -p 6380 ping        (or: docker exec -it stayhub-redis redis-cli)
 #
 # Note: `docker exec stayhub-postgres psql -U stayhub -d stayhub` needs NO password, and that is
 # not a misconfiguration — the image trusts connections originating inside the container. Over the
@@ -155,6 +158,49 @@ services:
       retries: 20
 
   # ---------------------------------------------------------------------------------------------
+  # Redis — the read cache and the rate limiter's counters.
+  #
+  # ⚠️ NOTHING HERE IS REQUIRED. The API starts, serves and passes its whole test suite with this
+  # container stopped. `core/cache.py` treats an unreachable Redis as a permanent cache miss and
+  # `core/rate_limit.py` fails OPEN. That is deliberate and it is the interesting part of the
+  # design: a cache that can take the site down has stopped being an optimisation.
+  #
+  # Prove it: `docker compose stop redis`, reload a listing page, watch it still work.
+  redis:
+    image: redis:7-alpine
+    container_name: stayhub-redis
+    restart: unless-stopped
+    # ⚠️ 6380:6379 — the LEFT number is the shifted host port, the right one is Redis's default
+    # inside the container. 6379 on this machine is taken twice over (a Homebrew redis-server and
+    # another project's container), and the failure when it clashes is not a clean "port in use":
+    # if the other Redis wins the bind, StayHub connects to IT, shares its keyspace, and the only
+    # symptom is cache entries that appear and vanish for no reason.
+    ports:
+      - "6380:6379"
+    command:
+      # Cap the memory and evict rather than fail. Without `maxmemory` a cache grows until the
+      # container is OOM-killed; without a policy Redis starts REFUSING WRITES when it hits the
+      # cap, which turns a full cache into failing requests — the exact coupling this service is
+      # designed not to have. `allkeys-lru` is right here because every key in this instance is
+      # disposable: cached listings and rate-limit counters both regenerate on demand.
+      - redis-server
+      - --maxmemory
+      - 128mb
+      - --maxmemory-policy
+      - allkeys-lru
+      # No persistence. This holds nothing that cannot be rebuilt from Postgres in one query, so
+      # writing an RDB would buy nothing and cost a fork of the process at snapshot time.
+      - --save
+      - ""
+      - --appendonly
+      - "no"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  # ---------------------------------------------------------------------------------------------
   # The API, containerised. OPT-IN via a profile.
   #
   #     docker compose up -d                    # backing services only — the default, unchanged
@@ -176,6 +222,11 @@ services:
         condition: service_healthy
       elasticsearch:
         condition: service_healthy
+      # `service_started`, NOT `service_healthy`. Redis is optional to this app, so waiting on its
+      # health would make an optional dependency block startup — reintroducing exactly the coupling
+      # core/cache.py exists to avoid.
+      redis:
+        condition: service_started
     ports:
       - "8000:8000"
     environment:
@@ -184,6 +235,9 @@ services:
       # this network. Same trap the hasura service documents above; it catches everyone once.
       STAYHUB_DATABASE_URL: postgresql+psycopg://stayhub:stayhub@postgres:5432/stayhub
       STAYHUB_ELASTICSEARCH_URL: http://elasticsearch:9200
+      # `redis:6379` — the SERVICE NAME and the container's own port. The 6380 above is a
+      # host-side publish and means nothing on this network, same trap as postgres:5432.
+      STAYHUB_REDIS_URL: redis://redis:6379/0
       # Must match the hasura service's HASURA_GRAPHQL_JWT_SECRET key, above.
       STAYHUB_JWT_SECRET: dev-only-change-me-in-any-real-deployment-0123456789
       STAYHUB_LOG_JSON: "true"

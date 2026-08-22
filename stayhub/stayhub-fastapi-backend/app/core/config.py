@@ -31,6 +31,36 @@ class Settings(BaseSettings):
     elasticsearch_url: str = "http://localhost:9200"
     elasticsearch_index: str = "stayhub-properties"
 
+    # ⚠️ 6380, not Redis's default 6379 — same reason Postgres is on 5433. Redis is the single
+    # most commonly already-running service on a developer machine (Homebrew installs one, and
+    # half the other projects on this box ship one in Compose). Binding the default means StayHub
+    # silently shares a keyspace with whatever else is there, and the symptom is not an error: it
+    # is another project's keys in your cache and yours in theirs.
+    redis_url: str = "redis://localhost:6380/0"
+
+    # How long a cached listing may be stale. Five minutes is a backstop, not the mechanism —
+    # every write path invalidates explicitly, so this only bounds the damage from a write path
+    # that forgets to. See the module docstring in core/cache.py.
+    cache_ttl_property_seconds: int = 300
+
+    # Rate limits, as "this many at once, refilling over this many seconds".
+    #
+    # Login is strict because the endpoint guards a password: 10 attempts, refilling over 5
+    # minutes. A person who mistypes twice never notices; a script trying a wordlist gets 10 tries
+    # per five minutes per address, which turns a feasible attack into an infeasible one.
+    #
+    # Search is generous because it is protecting a SERVER, not a secret: 60 at once, refilling
+    # over a minute. Nobody browsing can reach that; a runaway `while True` loop reaches it in
+    # under a second, which is exactly who it is for.
+    rate_limit_login_capacity: int = 10
+    rate_limit_login_seconds: int = 300
+    rate_limit_search_capacity: int = 60
+    rate_limit_search_seconds: int = 60
+
+    # The off switch. Rate limiting that cannot be turned off without a deploy is rate limiting you
+    # cannot turn off during the incident it is causing.
+    rate_limit_enabled: bool = True
+
     log_level: str = "INFO"
     # Human-readable locally, JSON wherever something is collecting it. Default off so `uvicorn
     # --reload` stays readable; the Dockerfile sets STAYHUB_LOG_JSON=true.

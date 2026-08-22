@@ -303,3 +303,86 @@ Run against the live stack, not asserted from reading the code:
   status field leaks a draft into public results; absent cannot leak.
 - **ES is near-real-time** — index then immediately search finds nothing. `refresh_index()` exists
   for tests and seeding only.
+
+---
+
+## 2026-08-22 — Redis, rate limiting and a transactional outbox
+
+Added for the `/system-design` tutorial track (`projects/system_design/`), which needed working
+examples of caching, rate limiting and reliable async work and found none here. Built first, so the
+posts quote code that has actually run — the rule the Hasura track learned the hard way.
+
+**Test count: 100 → 165.** All 165 pass with Redis running; 142 pass and 23 skip with it stopped.
+Zero failures either way, which is the property that mattered most (below).
+
+### What went in
+
+| | file | applied to |
+|---|---|---|
+| Cache | `core/cache.py` | `GET /properties/{id}` — cache-aside, 5-minute TTL |
+| Rate limit | `core/rate_limit.py` | `POST /auth/login` (10 / 5 min) · `GET /search` (60 / min) |
+| Outbox | `models/outbox.py` · `services/outbox_service.py` · `scripts/drain_outbox.py` | `booking.created` · `booking.cancelled` · `property.changed` |
+
+Plus: `redis:7-alpine` on **6380** in Compose, an `outbox` table (migration `35c27e31465b`), a
+`cache` boolean on `/health`, and a `headers` field on `ApiException` so a 429 can carry
+`Retry-After`.
+
+### Measured, not asserted
+
+- **Cache:** 15.2ms cold → 2.0ms warm over HTTP; 8.8ms → 0.3ms at the service layer.
+- **Rate limiter atomicity:** 50 concurrent threads against a 20-token bucket → **exactly 20**
+  allowed. A read-decide-write implementation leaks here; the Lua script does not.
+- **Backoff:** 2, 4, 8, 16, 32, 64, 128, 256s — 8 attempts spanning ~4.2 minutes, then `DEAD`.
+
+### Decisions worth not relitigating
+
+- **Everything optional degrades, and it is tested both ways.** The cache treats an outage as a
+  permanent miss; the limiter fails **OPEN**. Failing closed would make a Redis outage a login
+  outage — a cache that can take the site down has stopped being an optimisation. For quota
+  enforcement someone is billed against you would choose the opposite; say which and why.
+- **Rate limiting is a dependency, not middleware.** Middleware runs before authentication, so it
+  could only ever limit by IP, and per-route limits inside it become a badly reimplemented router.
+  The cost is that a new expensive endpoint is unprotected until someone adds the dependency.
+- **The limiter logic is a Lua script.** `EVAL` is atomic; read-decide-write is not, and its
+  failure mode is a limiter that passes every sequential test and allows 4× the limit under 4
+  workers.
+- **`enqueue` never commits.** The caller's commit is what makes the booking and its message
+  atomic. This is now a layer rule in `CLAUDE.md` alongside "repositories never commit".
+- **Booking emails moved off `BackgroundTasks`.** Both paths together sent every guest two emails —
+  caught by running the app, not by a test. `notification_service.py` keeps its `BackgroundTasks`
+  explanation (still the best in this repo) and the routes no longer call it.
+- **`property.changed` re-reads rather than replaying a snapshot**, unlike the booking events. The
+  index is derived data whose job is to match the database *now*; replaying a stale snapshot would
+  write a wrong document and mark it DONE.
+- **`_sync`'s outbox enqueue is NOT transactional** and the code says so. It runs after the commit
+  on purpose (indexing inside the transaction lets a slow ES fail a host's save), so a crash
+  between the two still loses an index update. `reindex_all` remains the backstop. The booking path
+  has no such gap — compare them.
+
+### Gotchas paid for, in this session
+
+- **Redis 6380, not 6379.** 6379 on this machine is taken twice — a Homebrew `redis-server` and
+  another project's container. Losing the bind is not a clean error: StayHub would connect to the
+  *other* Redis and silently share its keyspace.
+- **`FOR UPDATE` without `SKIP LOCKED` is worse than it looks.** Worker B *waits* for A instead of
+  taking different rows, so a second worker adds no throughput at all. `tests/test_outbox.py::
+  TestSkipLocked` asserts B comes back empty **and fast** — and it uses real separate connections,
+  because two sessions on the rolled-back `db` fixture cannot lock against each other and the test
+  would pass against a query with no locking clause at all.
+- **Handlers register at import time, so the worker must import their modules for side effects.**
+  A missing import is not a crash — it is `No handler for outbox topic 'booking.created'` on a
+  valid message, forever. `--list-topics` exists to make the registry visible.
+- **An unknown topic stays PENDING, never DEAD.** Marking it dead turns a five-minute deploy skew
+  (producer shipped before consumer) into permanent data loss.
+- **A fail-open guarantee is only as good as its narrowest try/except.** `check()` wrapped the Lua
+  call but not `register_script`, so a misconfigured `redis_url` failed **closed** — every login
+  500ing. Caught by `TestFailsOpen::test_an_erroring_redis_allows`.
+- **A test that counts rows in a shared table must count a delta.** `assert len(found) == 1` on the
+  whole `outbox` table passed only while the table was empty, and went red the moment the API was
+  exercised by hand.
+- **Autogenerate created a redundant index.** `index=True` on `status` plus a composite
+  `(status, available_at)` gives two indexes where one answers both — write cost and disk for
+  nothing. Dropped in the model, not just the migration.
+- **A stale `uvicorn` will happily keep serving old code.** Without `--reload`, a second launch
+  fails to bind and the requests go to the first process — which is how the duplicate-email fix
+  looked like it had not worked.

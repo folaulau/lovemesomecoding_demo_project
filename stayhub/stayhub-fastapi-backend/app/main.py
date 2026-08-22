@@ -13,6 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.v1.router import api_router
 from app.api.v1.routes.uploads import mount_static
+from app.core import cache
 from app.core.config import settings
 from app.core.exceptions import register_exception_handlers
 from app.core.logging import configure_logging
@@ -94,6 +95,7 @@ class Health(ApiModel):
     status: str
     database: bool
     elasticsearch: bool
+    cache: bool
 
 
 @app.get("/health", response_model=Health, tags=["health"])
@@ -115,6 +117,16 @@ def health() -> Health:
         db_ok = False
 
     es_ok = es_available()
+    cache_ok = cache.available()
+
+    # ⚠️ Only the DATABASE decides `status`. Elasticsearch being down degrades search and Redis
+    # being down degrades latency, but neither one makes this instance unfit to serve — and a
+    # health check that reports "degraded" for an optional dependency is a health check that gets
+    # an instance pulled out of the load balancer for a cache outage. The booleans below say what
+    # is broken; this field says whether to send traffic here.
     return Health(
-        status="ok" if db_ok else "degraded", database=db_ok, elasticsearch=es_ok
+        status="ok" if db_ok else "degraded",
+        database=db_ok,
+        elasticsearch=es_ok,
+        cache=cache_ok,
     )

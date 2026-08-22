@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from fastapi import APIRouter, BackgroundTasks, status
+from fastapi import APIRouter, status
 
 from app.core.deps import CurrentUser, DbSession, HostUser
 from app.core.exceptions import NotFoundException
@@ -14,7 +14,6 @@ from app.schemas.booking import (
     QuoteRequest,
 )
 from app.models.booking import Booking
-from app.services import notification_service
 from app.services.booking_service import BookingService
 
 router = APIRouter(prefix="/bookings", tags=["bookings"])
@@ -47,22 +46,27 @@ def availability(property_id: UUID, db: DbSession) -> AvailabilityResponse:
 
 @router.post("", response_model=BookingResponse, status_code=status.HTTP_201_CREATED)
 def create_booking(
-    payload: BookingCreateRequest, user: CurrentUser, db: DbSession, background: BackgroundTasks
+    payload: BookingCreateRequest, user: CurrentUser, db: DbSession
 ) -> BookingResponse:
     """Hold the dates. The booking is PENDING until payment succeeds.
 
     ⚠️ The body carries no price. Every figure is computed server-side from the listing.
-    """
-    booking = BookingService(db).create(user, payload)
 
-    # ⚠️ Queued AFTER create() returned, never before. A task added earlier still runs even if
-    # create() then raises — Starlette runs whatever is on the response's task list, and a failed
-    # request that emails "your dates are held" is worse than no email at all.
-    #
-    # Note it is handed `booking.public_id`, not `booking`. See notification_service for why the
-    # obvious version half-works.
-    background.add_task(notification_service.send_booking_confirmation, booking.public_id)
-    return _to_response(booking)
+    **The confirmation email is NOT sent from here** (changed 2026-08-22). It used to be a
+    `BackgroundTasks` call on this line; `BookingService.create` now writes a `booking.created`
+    message to the outbox inside the same transaction as the booking, and the worker
+    (`scripts/drain_outbox.py`) delivers it.
+
+    The route lost a parameter as a result, and that is the readable summary of what changed: the
+    old version had to be careful about *when* it queued the task, because a task queued before a
+    failed `create()` still runs. That whole class of ordering bug does not exist once the message
+    is part of the transaction — a rolled-back booking rolls back its own message.
+
+    `notification_service.send_booking_confirmation` is still there, still called by the outbox
+    handler, and its docstring is still the best explanation in this codebase of what
+    `BackgroundTasks` actually is. Compare the two paths; the difference is what "reliable" costs.
+    """
+    return _to_response(BookingService(db).create(user, payload))
 
 
 @router.get("/mine", response_model=list[BookingResponse])
@@ -92,16 +96,16 @@ def cancel_booking(
     payload: BookingCancelRequest,
     user: CurrentUser,
     db: DbSession,
-    background: BackgroundTasks,
 ) -> BookingResponse:
     """Cancel, subject to the 2-days-before-check-in rule.
 
     The rule is enforced here regardless of what the UI shows — a hidden button is a courtesy,
     not a permission.
+
+    The cancellation notice goes through the outbox, same as the confirmation — see
+    `create_booking` above.
     """
     booking = BookingRepository(db).get_by_public_id_full(public_id)
     if booking is None:
         raise NotFoundException("Booking not found.")
-    cancelled = BookingService(db).cancel(booking, user, payload.reason)
-    background.add_task(notification_service.send_cancellation_notice, cancelled.public_id)
-    return _to_response(cancelled)
+    return _to_response(BookingService(db).cancel(booking, user, payload.reason))

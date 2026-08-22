@@ -22,11 +22,17 @@ class ApiException(Exception):
         *,
         status_code: int = status.HTTP_400_BAD_REQUEST,
         field_errors: dict[str, str] | None = None,
+        headers: dict[str, str] | None = None,
     ) -> None:
         super().__init__(message)
         self.message = message
         self.status_code = status_code
         self.field_errors = field_errors or {}
+        # Almost every error in this API is a status code and a message. A few are not: a 429 is
+        # useless to a client without `Retry-After`, and a 401 challenge is meaningless without
+        # `WWW-Authenticate`. Those headers are part of what the status code MEANS, so they belong
+        # on the exception rather than being bolted on at the one call site that remembers.
+        self.headers = headers or {}
 
 
 class NotFoundException(ApiException):
@@ -71,7 +77,11 @@ def register_exception_handlers(app: FastAPI) -> None:
     @app.exception_handler(ApiException)
     async def _api_exception(_: Request, exc: ApiException) -> JSONResponse:
         return JSONResponse(
-            status_code=exc.status_code, content=_body(exc.message, exc.field_errors)
+            status_code=exc.status_code,
+            content=_body(exc.message, exc.field_errors),
+            # `or None` because Starlette treats an empty dict and None differently in a way that
+            # is not worth relying on; every other error passes None exactly as it did before.
+            headers=exc.headers or None,
         )
 
     @app.exception_handler(RequestValidationError)

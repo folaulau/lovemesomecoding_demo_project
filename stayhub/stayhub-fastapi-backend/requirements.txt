@@ -22,6 +22,15 @@ passlib[bcrypt]==1.7.4
 bcrypt==4.0.1
 python-multipart==0.0.20
 
+# Cache and rate limiting
+# One client library for both — they are the same Redis. `redis-py` bundles its own connection
+# pool, so nothing else is needed for either.
+#
+# ⚠️ The app must still start and serve every page with this UNINSTALLED and with Redis down.
+# core/cache.py catches the ImportError and treats a missing library exactly like a cache miss;
+# that is what makes the dependency genuinely optional rather than optional-until-you-try-it.
+redis==5.2.1
+
 # Search
 elasticsearch==8.15.1
 

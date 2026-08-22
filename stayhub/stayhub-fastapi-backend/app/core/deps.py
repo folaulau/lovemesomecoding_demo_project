@@ -7,11 +7,13 @@ schema. `Depends(require_host)` on a route is both the enforcement and the docum
 
 from typing import Annotated
 
-from fastapi import Depends
+from fastapi import Depends, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core import rate_limit
+from app.core.config import settings
 from app.core.exceptions import ForbiddenException, UnauthorizedException
 from app.core.security import decode_access_token
 from app.db.session import get_db
@@ -84,3 +86,74 @@ def require_admin(user: CurrentUser) -> User:
 
 HostUser = Annotated[User, Depends(require_host)]
 AdminUser = Annotated[User, Depends(require_admin)]
+
+
+# ---------------------------------------------------------------------------
+# Rate limiting
+# ---------------------------------------------------------------------------
+#
+# Expressed as dependencies rather than as middleware, and that is a real choice.
+#
+# Middleware sees every request, which sounds like the right place for a limiter and makes it hard
+# to give different endpoints different limits — you end up with a path-prefix table inside the
+# middleware, which is a router badly reimplemented. It also means the limiter runs before FastAPI
+# has worked out who is calling, so it can only ever limit by IP.
+#
+# A dependency runs after authentication, so it can limit the ACCOUNT (see `rate_limit.identify`),
+# it sits on exactly the routes that need it, and it shows up in the OpenAPI document. The cost is
+# that a new expensive endpoint is unprotected until someone adds the dependency — which is the
+# same trade as every other `Depends(require_host)` in this file.
+#
+# ⚠️ In production a coarse limit belongs at the EDGE as well — the load balancer or the CDN —
+# because a request refused there never costs a worker, a database connection or a log line. This
+# is the fine-grained layer behind that, not a replacement for it.
+
+LOGIN_RULE = rate_limit.Rule(
+    name="login",
+    capacity=settings.rate_limit_login_capacity,
+    per_seconds=settings.rate_limit_login_seconds,
+)
+
+SEARCH_RULE = rate_limit.Rule(
+    name="search",
+    capacity=settings.rate_limit_search_capacity,
+    per_seconds=settings.rate_limit_search_seconds,
+)
+
+
+def limit_login(request: Request) -> None:
+    """Guards `POST /auth/login` against password guessing.
+
+    Keyed on the IP, necessarily: there is no authenticated user yet, and keying on the submitted
+    EMAIL would let an attacker lock a victim out of their own account by failing logins on their
+    address — a limiter that becomes a denial-of-service tool against the person it protects.
+
+    A serious deployment keys on both, with a per-account limit that slows attempts down and a
+    per-IP limit that stops them, precisely so neither one alone can be abused this way.
+    """
+    if not settings.rate_limit_enabled:
+        return
+    rate_limit.enforce(
+        LOGIN_RULE,
+        rate_limit.identify(request),
+        "Too many sign-in attempts. Please wait a moment and try again.",
+    )
+
+
+def limit_search(request: Request, user: "OptionalUser") -> None:
+    """Guards `GET /search`, the most expensive read in the app.
+
+    Keyed on the account when there is one — see `rate_limit.identify` for why that is both fairer
+    and harder to evade than an address.
+    """
+    if not settings.rate_limit_enabled:
+        return
+    rate_limit.enforce(
+        SEARCH_RULE,
+        rate_limit.identify(request, user),
+        "You are searching faster than we can keep up. Please slow down.",
+    )
+
+
+LoginRateLimit = Depends(limit_login)
+SearchRateLimit = Depends(limit_search)

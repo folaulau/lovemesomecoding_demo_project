@@ -55,3 +55,17 @@ class PaymentStatus(StrEnum):
     SUCCEEDED = "SUCCEEDED"
     FAILED = "FAILED"
     REFUNDED = "REFUNDED"
+
+
+class OutboxStatus(StrEnum):
+    """Where a queued message is in its life.
+
+    `DEAD` is the dead-letter state, and having it as a status rather than a separate table is the
+    right call at this size: the rows are identical, the queries are the same, and a `WHERE status
+    = 'DEAD'` is a simpler thing to build an admin page on than a second table nobody remembers to
+    look at. At a volume where DEAD rows outnumber live ones, move them.
+    """
+
+    PENDING = "PENDING"  # waiting to be picked up
+    DONE = "DONE"        # handled successfully
+    DEAD = "DEAD"        # gave up after max_attempts — needs a human

@@ -40,7 +40,13 @@ def my_listings(host: HostUser, db: DbSession) -> list[PropertyResponse]:
 
 @router.get("/{public_id}", response_model=PropertyResponse)
 def get_property(public_id: UUID, db: DbSession) -> PropertyResponse:
-    return PropertyResponse.model_validate(PropertyService(db).get_for_public(public_id))
+    """The public listing page. Cached — see `PropertyService.get_public_view`.
+
+    The route calls a method that returns an already-built `PropertyResponse` rather than doing
+    its own `model_validate`, because the cached value IS the serialised response. Validating here
+    would mean the cache stores one shape and the route produces another.
+    """
+    return PropertyService(db).get_public_view(public_id)
 
 
 @router.post("", response_model=PropertyResponse, status_code=status.HTTP_201_CREATED)

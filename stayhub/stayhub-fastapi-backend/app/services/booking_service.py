@@ -22,7 +22,7 @@ from app.models.user import User
 from app.repositories.booking_repository import BookingRepository
 from app.repositories.property_repository import PropertyRepository
 from app.schemas.booking import BookingCreateRequest, PriceBreakdown, QuoteRequest
-from app.services import pricing_service
+from app.services import notification_service, outbox_service, pricing_service
 from app.services.cancellation_policy import cancellation_deadline, is_cancellable
 
 logger = logging.getLogger(__name__)
@@ -82,6 +82,40 @@ class BookingService:
 
         try:
             self.bookings.add(booking)
+
+            # ⚠️ THE TRANSACTIONAL OUTBOX, and the position of this line IS the pattern.
+            #
+            # It is BEFORE the commit, so the booking row and the "send a confirmation" row are
+            # written by the same transaction. Both land or neither does. Move it after the
+            # commit and you have recreated the gap it closes: a crash in between leaves a real
+            # booking whose guest is never told, with nothing anywhere recording the debt.
+            #
+            # `flush()` inside enqueue assigns the message id; it does NOT commit. The commit
+            # below is still the single transaction boundary for both rows — which is why
+            # outbox_service.enqueue is documented as never committing.
+            #
+            # Note this survives the IntegrityError path for free: if the exclusion constraint
+            # rejects the booking, the rollback takes the outbox row with it. Nobody is emailed
+            # about a booking that lost the race.
+            outbox_service.enqueue(
+                self.db,
+                notification_service.TOPIC_BOOKING_CREATED,
+                {
+                    # The id, for the handler to re-read the booking with...
+                    "bookingId": str(booking.public_id),
+                    # ...and a snapshot, so the message is diagnosable in the table without a join
+                    # and so `models/outbox.py`'s point about carrying context is not just theory.
+                    "guestEmail": guest.email,
+                    "propertyTitle": prop.title,
+                    "checkIn": req.check_in,
+                    "checkOut": req.check_out,
+                    "total": breakdown.total,
+                    # The idempotency key a real provider call would carry, so a redelivery is
+                    # recognisable downstream as the same email rather than a second one.
+                    "idempotencyKey": f"booking-created:{booking.public_id}",
+                },
+            )
+
             self.db.commit()
         except IntegrityError as exc:
             self.db.rollback()
@@ -123,6 +157,18 @@ class BookingService:
         booking.status = BookingStatus.CANCELLED
         booking.cancelled_at = datetime.now(UTC)
         booking.cancellation_reason = reason
+
+        # Same transaction, same reason as in create().
+        outbox_service.enqueue(
+            self.db,
+            notification_service.TOPIC_BOOKING_CANCELLED,
+            {
+                "bookingId": str(booking.public_id),
+                "guestEmail": booking.guest.email,
+                "idempotencyKey": f"booking-cancelled:{booking.public_id}",
+            },
+        )
+
         self.db.commit()
         self.db.refresh(booking)
         # Cancelling frees the dates automatically: CANCELLED is not in BookingStatus.blocking(),

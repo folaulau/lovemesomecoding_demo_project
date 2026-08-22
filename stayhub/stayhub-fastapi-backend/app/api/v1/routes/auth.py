@@ -1,6 +1,6 @@
 from fastapi import APIRouter, status
 
-from app.core.deps import CurrentUser, DbSession
+from app.core.deps import CurrentUser, DbSession, LoginRateLimit
 from app.schemas.user import (
     AuthResponse,
     BecomeHostRequest,
@@ -22,8 +22,14 @@ def register(payload: UserRegisterRequest, db: DbSession) -> AuthResponse:
     return AuthService(db).register(payload)
 
 
-@router.post("/login", response_model=AuthResponse)
+@router.post("/login", response_model=AuthResponse, dependencies=[LoginRateLimit])
 def login(payload: UserLoginRequest, db: DbSession) -> AuthResponse:
+    """Sign in. Rate limited — see `limit_login` in core/deps.py.
+
+    ⚠️ The limiter is a `dependencies=[...]` entry rather than a parameter because this route does
+    not USE its result. A parameter that is never read is a parameter someone deletes as unused,
+    taking the limit with it.
+    """
     return AuthService(db).login(payload.email, payload.password)
 
 

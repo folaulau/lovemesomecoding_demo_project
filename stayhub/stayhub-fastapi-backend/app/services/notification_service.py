@@ -25,19 +25,44 @@ does not, and is a real HTTP callback instead.
 
 import json
 import logging
+from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 from uuid import UUID
 
 from sqlalchemy import select
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import Session, selectinload
 
 from app.db.session import SessionLocal
 from app.models.booking import Booking
+from app.services import outbox_service
 
 logger = logging.getLogger(__name__)
 
 OUTBOX = Path("notifications")
+
+
+@contextmanager
+def _session(existing: Session | None):
+    """Use the caller's session if there is one, otherwise open and close our own.
+
+    Two callers with genuinely different needs share these functions. A BackgroundTask runs after
+    the request's session is closed and MUST open its own. An outbox handler runs inside the
+    worker's transaction and must NOT — a second session would read outside the transaction
+    holding the message's row lock, and would leave a connection per message.
+
+    ⚠️ The `yield`/`finally` asymmetry is deliberate: a session we were HANDED is not ours to
+    close. Closing a caller's session out from under it is the kind of bug that surfaces three
+    frames away as "Instance is not bound to a Session".
+    """
+    if existing is not None:
+        yield existing
+        return
+    session = SessionLocal()
+    try:
+        yield session
+    finally:
+        session.close()
 
 
 def _deliver(to: str, subject: str, body: str) -> None:
@@ -51,7 +76,7 @@ def _deliver(to: str, subject: str, body: str) -> None:
     logger.info("Email queued for %s: %s", to, subject, extra={"recipient": to})
 
 
-def send_booking_confirmation(booking_public_id: UUID) -> None:
+def send_booking_confirmation(booking_public_id: UUID, *, db: Session | None = None) -> None:
     """Tell the guest their dates are held.
 
     ⚠️ THE SIGNATURE IS THE LESSON. This takes a UUID — a plain value — and NOT the `Booking`
@@ -80,8 +105,8 @@ def send_booking_confirmation(booking_public_id: UUID) -> None:
     Taking an id and opening a fresh session removes the whole category.
     """
     # A session of its own, closed by the `with`. It does NOT belong to the request; the request
-    # finished before this line ran.
-    with SessionLocal() as db:
+    # finished before this line ran. Unless a caller supplied one — see `_session`.
+    with _session(db) as db:
         booking = db.execute(
             select(Booking)
             .where(Booking.public_id == booking_public_id)
@@ -110,9 +135,9 @@ def send_booking_confirmation(booking_public_id: UUID) -> None:
         )
 
 
-def send_cancellation_notice(booking_public_id: UUID) -> None:
-    """Confirm a cancellation. Same rules as above — an id, and its own session."""
-    with SessionLocal() as db:
+def send_cancellation_notice(booking_public_id: UUID, *, db: Session | None = None) -> None:
+    """Confirm a cancellation. Same rules as above — an id, and (usually) its own session."""
+    with _session(db) as db:
         booking = db.execute(
             select(Booking)
             .where(Booking.public_id == booking_public_id)
@@ -132,3 +157,41 @@ def send_cancellation_notice(booking_public_id: UUID) -> None:
                 f"has been cancelled.\n"
             ),
         )
+
+
+# ---------------------------------------------------------------------------
+# Outbox handlers
+# ---------------------------------------------------------------------------
+#
+# The same two emails, reachable a second way: through the outbox instead of BackgroundTasks.
+#
+# Both routes exist ON PURPOSE, and the contrast is the lesson. `BackgroundTasks` sends the email
+# before the worker would even poll — but loses it on a crash, a deploy, or a provider blip. The
+# outbox is a second or two slower and cannot lose it. Which one a piece of work deserves is a
+# judgement about what it costs to lose, and having both here makes that judgement concrete rather
+# than theoretical.
+#
+# ⚠️ `_deliver` writes a file named by timestamp and recipient, so a redelivery produces a SECOND
+# file rather than overwriting the first. That is the at-least-once cost made visible: run the
+# worker twice on the same message and you can count the duplicates in `notifications/`. A real
+# provider call would pass `message["idempotencyKey"]` — which is why the payload carries one.
+
+TOPIC_BOOKING_CREATED = "booking.created"
+TOPIC_BOOKING_CANCELLED = "booking.cancelled"
+
+
+@outbox_service.handles(TOPIC_BOOKING_CREATED)
+def _handle_booking_created(db, payload: dict) -> None:
+    """⚠️ Uses the WORKER's session, passed in — it does not open one of its own.
+
+    That is the opposite of `send_booking_confirmation` above, and both are right for their
+    context. The BackgroundTask runs after the request's session is closed and must therefore make
+    its own. The handler runs inside the worker's transaction, and opening a second session here
+    would put the handler's reads outside the transaction that holds the message's row lock.
+    """
+    send_booking_confirmation(UUID(payload["bookingId"]), db=db)
+
+
+@outbox_service.handles(TOPIC_BOOKING_CANCELLED)
+def _handle_booking_cancelled(db, payload: dict) -> None:
+    send_cancellation_notice(UUID(payload["bookingId"]), db=db)
