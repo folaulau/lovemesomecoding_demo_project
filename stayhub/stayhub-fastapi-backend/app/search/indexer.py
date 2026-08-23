@@ -45,7 +45,7 @@ from app.core.config import settings
 from app.models.enums import PropertyStatus
 from app.models.property import Property
 from app.search.client import get_es
-from app.search.index import ensure_index, to_document
+from app.search.index import current_index, ensure_index, to_document
 from app.services import outbox_service
 
 logger = logging.getLogger(__name__)
@@ -94,7 +94,7 @@ def remove_property(
     try:
         # `ignore_unavailable` / a 404 on delete is fine and expected: unpublishing a listing that
         # was never indexed is a no-op, not an error.
-        client.delete(index=settings.elasticsearch_index, id=public_id, ignore=[404])
+        client.options(ignore_status=404).delete(index=settings.elasticsearch_index, id=public_id)
         return True
     except Exception:  # noqa: BLE001
         logger.exception("Failed to remove property %s from index", public_id)
@@ -110,7 +110,17 @@ def rebuild_index(properties: list[Property], *, es: Elasticsearch | None = None
     treating Postgres as the single source of truth.
     """
     client = es or get_es()
-    client.indices.delete(index=settings.elasticsearch_index, ignore=[404])
+
+    # ⚠️ Delete the CONCRETE index, not the alias. `DELETE /stayhub-properties` fails with
+    # "the provided expression matches an alias, specify the corresponding concrete indices
+    # instead" — Elasticsearch refuses to let a name that many indices could hide behind be the
+    # target of a destructive call. That refusal is a feature; resolve the name first.
+    concrete = current_index(client)
+    if concrete is not None:
+        client.options(ignore_status=404).indices.delete(index=concrete)
+    else:
+        # Pre-alias layout, or nothing there at all. Either way this name is safe to delete.
+        client.options(ignore_status=404).indices.delete(index=settings.elasticsearch_index)
     ensure_index(client)
 
     if not properties:

@@ -32,11 +32,24 @@ def search(
     # A repeated query parameter — `?amenities=wifi&amenities=parking` — not a comma-joined
     # string. It needs no parsing and no escaping decision for a value containing a comma.
     amenities: list[str] = Query(default=[]),
+    # Geo — the map viewport. All three are optional, and `lat`/`lon` are only honoured together;
+    # see SearchRequest.geo_point for why half a coordinate has to mean "no geo".
+    lat: float | None = Query(default=None, ge=-90, le=90),
+    lon: float | None = Query(default=None, ge=-180, le=180),
+    radius_km: float | None = Query(default=None, gt=0, le=500, alias="radiusKm"),
+    # Facets cost one `filter` aggregation per control (see queries.build_aggs). The result page
+    # wants them; "load more" and the map's pan handler do not, and asking for them anyway is the
+    # easiest accidental way to double a search's cost.
+    facets: bool = Query(default=True),
     page: int = Query(default=1, ge=1, le=100),
     page_size: int = Query(default=20, ge=1, le=100, alias="pageSize"),
-    sort: str = Query(default="relevance", pattern="^(relevance|price_asc|price_desc|rating)$"),
+    sort: str = Query(default="relevance", pattern="^(relevance|price_asc|price_desc|rating|distance)$"),
 ) -> SearchResponse:
     """Search published listings.
+
+    `lat` / `lon` / `radiusKm` restrict results to a circle and, whenever a coordinate is given,
+    put a `distanceKm` on every hit. `sort=distance` makes proximity the ordering rather than a
+    number. `facets=false` skips the filter-panel counts for callers that do not render them.
 
     ⚠️ `checkIn` / `checkOut` are accepted but do NOT filter results yet. Date availability lives
     in Postgres (the bookings table), not in the index, so filtering on it here would mean either
@@ -53,6 +66,9 @@ def search(
         property_type=property_type,
         room_type=room_type,
         amenities=amenities,
+        lat=lat,
+        lon=lon,
+        radius_km=radius_km,
         page=page,
         page_size=page_size,
         sort=sort,
@@ -66,5 +82,5 @@ def search(
             status_code=503,
         )
 
-    raw = get_es().search(index=index_name(), body=build_query(req))
+    raw = get_es().search(index=index_name(), body=build_query(req, with_facets=facets))
     return to_response(raw.body if hasattr(raw, "body") else dict(raw), req)

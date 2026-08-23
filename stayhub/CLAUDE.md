@@ -118,6 +118,58 @@ Delivery is at-least-once by nature, so both handlers must stay idempotent.
 symptom is not a crash, it is `No handler for outbox topic 'booking.created'` on a valid message,
 forever. `scripts/drain_outbox.py` imports them explicitly and `--list-topics` shows the registry.
 
+**Search — the Elasticsearch surface** (extended 2026-08-22, for the `/elasticsearch` tutorial track):
+
+```bash
+docker compose up -d elasticsearch                  # :9200, security OFF
+python -m scripts.reindex --status                  # what the alias points at
+python -m scripts.reindex                           # zero-downtime reindex into a new generation
+python -m scripts.analyze_demo                      # what the analyzer actually stores
+python -m scripts.explain_search cabin              # why THAT listing ranked first
+python -m scripts.snapshot --register --create      # snapshot/restore
+docker compose --profile secure up -d elasticsearch-secure   # :9201, security ON
+python -m scripts.es_security --bootstrap           # a least-privilege API key
+```
+
+Five things went in, and each one has a rule worth keeping:
+
+- **`settings.elasticsearch_index` is an ALIAS, not an index.** The real indices are
+  `stayhub-properties-000001`, `-000002`, … A field type cannot be changed once written, so
+  changing a mapping means a new index — and through an alias that is a `_reindex` plus one atomic
+  `update_aliases`, with no instant where search is empty. `rebuild_index` therefore has to resolve
+  the concrete name before deleting: `DELETE /stayhub-properties` is refused when that name is an
+  alias, and that refusal is a feature.
+- **The text query is TWO `multi_match`es in a `should`, not one.** The single `best_fields` +
+  `operator: and` version had a bug on real data: **"san francisco loft" returned nothing**, because
+  `best_fields` requires every term in ONE field and "san francisco" is in `city` while "loft" is in
+  `title`. `cross_fields` fixes it but **cannot** do fuzziness — Elasticsearch rejects the pair with
+  *"Fuzziness not allowed for type [cross_fields]"* — so both clauses are needed to keep typo
+  tolerance. Verified: `best_fields` 0 hits, hybrid 1 hit, "cabbin" still finds cabins.
+- **Every facet is counted with its OWN filter dropped** (`queries.build_aggs`). Count it inside the
+  main query and ticking "Austin" collapses the city list to Austin, so nobody can switch cities
+  without clearing the filter. `global` + a per-facet `filter` agg is what makes dropping a clause
+  possible. Every OTHER filter still applies — "how many results if I picked this instead" is the
+  question a filter panel answers.
+- **`highlight` sets `encoder: "html"`, and it is not optional.** Highlighting inserts `<mark>` into
+  the ORIGINAL text and returns a string the UI renders as HTML, so without an encoder a
+  description containing `<script>` comes back as a live tag. Verified both ways in
+  `tests/test_search.py::test_highlights_are_escaped`.
+- **`geo_point` is finally queried.** `lat`/`lon`/`radiusKm` filter to a circle; `sort=distance`
+  makes proximity the ordering. Whenever coordinates are given, a `_geo_distance` entry is appended
+  to `sort` purely so `distanceKm` can be read off each hit — which is why an explicit `"_score"`
+  has to come first, or a relevance search would silently reorder by proximity.
+
+⚠️ **The app sends NO credentials by default**, because the default cluster runs with
+`xpack.security.enabled: false` and would answer a request that carried them with *401 missing
+authentication credentials* — a genuinely confusing error on a cluster with no authentication at
+all. `elasticsearch_api_key` (preferred) or `_username`/`_password` opt in, and they are mutually
+exclusive: passing both raises at client construction.
+
+⚠️ **`path.repo` is read at STARTUP ONLY**, so adding a snapshot repository needs a restart, and the
+snapshot volume needs the `es-snapshot-init` one-shot — a named volume whose mount point does not
+exist in the image arrives owned by root, and Elasticsearch runs as uid 1000. The symptom is not a
+permission error: it is `repository_verification_exception: failed to create blob container`.
+
 **Layer rules, in priority order:**
 
 - **Repositories NEVER commit.** A commit is a transaction boundary and only the caller knows where

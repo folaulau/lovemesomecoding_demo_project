@@ -131,10 +131,29 @@ services:
       timeout: 5s
       retries: 10
 
+  # A one-shot that exists purely to fix ownership on the snapshot volume, and the reason is worth
+  # a paragraph because it bites everyone once.
+  #
+  # Docker creates a named volume owned by ROOT unless the mount point already exists inside the
+  # image, in which case it copies that directory's ownership. `/usr/share/elasticsearch/data` does
+  # exist in the image, so the data volume is fine. `…/snapshots` does not, so it arrives owned by
+  # root — and Elasticsearch runs as uid 1000 and cannot write to it. The failure is not a
+  # permission error you can read, either: repository registration returns
+  # `repository_verification_exception: failed to create blob container`.
+  es-snapshot-init:
+    image: busybox:1.36
+    container_name: stayhub-es-snapshot-init
+    command: sh -c "mkdir -p /snapshots && chown -R 1000:0 /snapshots && chmod 775 /snapshots"
+    volumes:
+      - stayhub-essnapshots:/snapshots
+
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.15.3
     container_name: stayhub-elasticsearch
     restart: unless-stopped
+    depends_on:
+      es-snapshot-init:
+        condition: service_completed_successfully
     environment:
       discovery.type: single-node
       # ⚠️ NO CREDENTIALS AT ALL — that is what `xpack.security.enabled: false` means. It removes
@@ -147,12 +166,64 @@ services:
       # several steps of ceremony that teach nothing about search.
       xpack.security.enabled: "false"
       ES_JAVA_OPTS: "-Xms512m -Xmx512m"
+      # ⚠️ Snapshots CANNOT be written anywhere the cluster has not been told about in advance.
+      # `path.repo` is the allow-list, it is read at STARTUP ONLY, and registering a repository
+      # outside it fails with "location [...] doesn't match any of the locations specified by
+      # path.repo". That static setting is why "just add a snapshot repo" needs a restart — it is
+      # a guard against a compromised cluster being told to write files anywhere on the host.
+      #
+      # A `fs` repository is the right shape for a single-node demo. Production uses the
+      # `repository-s3` plugin and a bucket, and everything about snapshot/restore below is
+      # identical either way — only the registration body changes.
+      path.repo: "/usr/share/elasticsearch/snapshots"
     ports:
       - "9200:9200"
     volumes:
       - stayhub-esdata:/usr/share/elasticsearch/data
+      # A named volume, not a bind mount: the files are written by the container's `elasticsearch`
+      # user (uid 1000) and a host directory would need matching ownership to be writable.
+      - stayhub-essnapshots:/usr/share/elasticsearch/snapshots
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://localhost:9200/_cluster/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  # ---------------------------------------------------------------------------------------------
+  # The SAME Elasticsearch, with security ON. Opt-in, on 9201, so it can run alongside the open
+  # one rather than replacing it — the point is to compare them.
+  #
+  #   docker compose --profile secure up -d elasticsearch-secure
+  #   curl http://localhost:9201/_cluster/health                    -> 401
+  #   curl -u elastic:stayhub-elastic http://localhost:9201/_cluster/health   -> 200
+  #   cd stayhub-fastapi-backend && python -m scripts.es_security --bootstrap
+  #
+  # ⚠️ This is authentication WITHOUT TLS (`xpack.security.http.ssl.enabled: false`), and that is
+  # a teaching shortcut, not a production configuration. Basic auth over plain HTTP puts the
+  # password in every request in the clear; an API key is a bearer token and is no better. Real
+  # deployments turn HTTP TLS on and give the client the CA certificate — the enrollment flow the
+  # 8.x image runs by default when you leave it alone. Everything about ROLES and API KEYS below
+  # is identical either way, which is why they are worth learning separately from the cert dance.
+  # ---------------------------------------------------------------------------------------------
+  elasticsearch-secure:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.15.3
+    container_name: stayhub-elasticsearch-secure
+    profiles: ["secure"]
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: "true"
+      # Sets the `elastic` superuser password at first start. It is a BOOTSTRAP credential — the
+      # app must never use it. scripts/es_security.py uses it once, to mint a scoped API key, and
+      # that key is what the app gets.
+      ELASTIC_PASSWORD: stayhub-elastic
+      xpack.security.http.ssl.enabled: "false"
+      ES_JAVA_OPTS: "-Xms512m -Xmx512m"
+    ports:
+      - "9201:9200"
+    volumes:
+      - stayhub-esdata-secure:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS -u elastic:stayhub-elastic http://localhost:9200/_cluster/health || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 20
@@ -253,4 +324,6 @@ services:
 volumes:
   stayhub-pgdata:
   stayhub-esdata:
+  stayhub-esdata-secure:
+  stayhub-essnapshots:
   stayhub-uploads:

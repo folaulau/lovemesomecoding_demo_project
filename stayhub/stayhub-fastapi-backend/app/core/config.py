@@ -29,7 +29,28 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 60 * 24 * 7
 
     elasticsearch_url: str = "http://localhost:9200"
+    # ⚠️ An ALIAS, not an index. `app/search/index.py` keeps the concrete indices behind it
+    # (`stayhub-properties-000001`, …) so a mapping change can be a reindex + alias flip with no
+    # downtime instead of a delete and a rebuild.
     elasticsearch_index: str = "stayhub-properties"
+
+    # Credentials — EMPTY by default, because the default cluster in docker-compose.yml runs with
+    # `xpack.security.enabled: false` and would reject a request that carried them.
+    #
+    # `docker compose --profile secure up -d elasticsearch-secure` starts a second cluster on 9201
+    # with security ON. Point `elasticsearch_url` at it and set ONE of these:
+    #
+    #   elasticsearch_api_key   preferred. Scoped to exactly the privileges this app needs, and
+    #                           revocable on its own without touching any other client.
+    #   elasticsearch_username / _password
+    #                           the `elastic` superuser is a bootstrap credential, not a runtime
+    #                           one. Anything that can read your index can also delete every index
+    #                           in the cluster.
+    #
+    # See scripts/es_security.py, which mints the scoped key.
+    elasticsearch_api_key: str = ""
+    elasticsearch_username: str = ""
+    elasticsearch_password: str = ""
 
     # ⚠️ 6380, not Redis's default 6379 — same reason Postgres is on 5433. Redis is the single
     # most commonly already-running service on a developer machine (Homebrew installs one, and

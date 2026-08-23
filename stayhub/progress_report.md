@@ -3,8 +3,8 @@
 Shared context for the StayHub demo (Airbnb-style short-term rentals).
 **Read this first when resuming work.**
 
-**Status:** Complete and working end to end, Stripe included. **58 backend + 33 customer + 7 admin tests, all green.**
-**Last updated:** 2026-08-21
+**Status:** Complete and working end to end, Stripe included. **193 backend + 33 customer + 7 admin tests, all green.**
+**Last updated:** 2026-08-22
 
 ---
 
@@ -386,3 +386,107 @@ Plus: `redis:7-alpine` on **6380** in Compose, an `outbox` table (migration `35c
 - **A stale `uvicorn` will happily keep serving old code.** Without `--reload`, a second launch
   fails to bind and the requests go to the first process — which is how the duplicate-email fix
   looked like it had not worked.
+
+---
+
+## 2026-08-22 — the Elasticsearch surface, built out for the `/elasticsearch` track
+
+**Why this session existed.** The `/elasticsearch` tutorial track chose "build the additions in
+StayHub first, then write" — the same decision the FastAPI track made, and for the same reason the
+Hasura track's report records: four posts written about surfaces that were never built are still
+that track's least-verified posts. So everything below runs, and everything below is quoted from
+code that ran.
+
+The search package already covered mapping, analysis, `must` vs `filter`, bulk indexing and the
+outbox retry. Seven things it did not cover went in.
+
+**193 backend tests pass** (was 165; `tests/test_search.py` adds 28). The cluster-backed half skips
+cleanly when Elasticsearch is not running, the same way `test_cache.py` skips without Redis.
+
+### 1. A real bug, found by writing the tutorial
+
+`multi_match` with `operator: and` and the default `best_fields` **returned nothing for "san
+francisco loft"**. `best_fields` scores each field independently and keeps the best, so
+`operator: and` means "every term in ONE field" — and "san francisco" is in `city` while "loft" is
+in `title`. Nobody noticed because the seeded queries were all single-field.
+
+`cross_fields` fixes it, and **cannot** be combined with fuzziness — ES rejects the pair with
+*"Fuzziness not allowed for type [cross_fields]"*. So `_text_clause` is now both, in a `should`
+with `minimum_should_match: 1`: cross-field exactness plus typo tolerance, and a document matching
+both scores higher, which is the right preference.
+
+Measured on the seeded index: `best_fields` 0 hits, hybrid 1 hit, `"cabbin"` still finds cabins.
+
+### 2. Alias + generations, instead of a concrete index
+
+`stayhub-properties` is now an **alias** over `stayhub-properties-000001`, `-000002`, …
+`scripts/reindex.py` does the zero-downtime mapping change: create the next generation, `_reindex`
+into it, `update_aliases` remove+add in one atomic call, keep the old index for rollback.
+
+`--adopt` is the one-time migration off the old layout and is deliberately a script with a prompt,
+not something `ensure_index` does at startup — two API instances booting at once would both start
+moving documents. Run on this machine: 12 docs adopted, then reindexed 000001 → 000002 with the
+alias never resolving to nothing.
+
+### 3. Drill-down-aware facets
+
+`GET /search` returns `facets` — cities, property types, room types, amenities, price ranges and
+price stats. Each is counted with **its own filter dropped and every other filter applied**
+(`global` + a per-facet `filter` agg), because the obvious implementation collapses: tick "Austin"
+and the city list becomes one row. Verified over HTTP — `amenities=hot-tub` narrows results to 3
+and the cities facet to 3, while the amenities facet still lists all 12.
+
+`?facets=false` skips the whole block for callers that do not render it.
+
+### 4. Geo, finally queried
+
+`location` had been mapped and populated since the index was created and **nothing ever queried
+it**. `lat`/`lon`/`radiusKm` now filter to a circle and `sort=distance` orders by proximity.
+Whenever coordinates are supplied a `_geo_distance` entry is appended to `sort` purely so
+`distanceKm` can be read off each hit — ES already computed it, so this is free and exact.
+
+### 5. Highlighting, with the encoder
+
+`highlight` with `encoder: "html"`. Without it a description containing `<script>` comes back as a
+live tag inside a fragment the frontend renders as HTML. Both behaviours verified against the
+cluster before the setting was chosen.
+
+### 6. Snapshots — and an honest note that StayHub does not need them
+
+`path.repo` on the container, an `fs` repository, `scripts/snapshot.py` with register / create /
+list / restore / SLM policy. Proven end to end: 12 docs → `_delete_by_query` → 0 → restore → 12.
+
+The script says out loud that a snapshot of **derived** data is worth less than a rebuild from
+Postgres, which is faster and guaranteed current. Snapshots earn their place when the index IS the
+source of truth, or when a rebuild is too slow to be an outage plan.
+
+### 7. Security, as an opt-in profile
+
+`docker compose --profile secure up -d elasticsearch-secure` runs the same image on **9201** with
+`xpack.security.enabled: true`. `scripts/es_security.py` creates a role scoped to
+`stayhub-properties*` and mints an API key from it, then proves the key can index and search and
+**cannot** read another index, delete one, list users, or mint another key.
+
+Auth without TLS is a teaching shortcut and the compose comment says so. Roles and API keys are
+identical either way, which is why they are worth learning apart from the certificate dance.
+
+### Gotchas paid for, in this session
+
+- **`best_fields` + `operator: and` means "all terms in ONE field".** A perfectly reasonable
+  cross-field search returns zero and looks like an indexing problem.
+- **`cross_fields` and `fuzziness` are mutually exclusive.** Not degraded — a 400.
+- **`DELETE /<name>` is refused when the name is an alias**: *"the provided expression matches an
+  alias, specify the corresponding concrete indices instead"*. `rebuild_index` had to resolve first.
+- **A facet counted inside its own filter collapses to one row.** This is the difference between a
+  filter panel and a dead end, and no aggregation tutorial mentions it.
+- **Highlighting does not escape the source text.** `encoder: "html"` is the whole defence.
+- **`path.repo` is read at STARTUP ONLY** — adding a snapshot repository needs a restart.
+- **A named volume whose mount point is absent from the image arrives owned by root**, and ES runs
+  as uid 1000. The error is `repository_verification_exception: failed to create blob container`,
+  which names neither permissions nor ownership. Hence the `es-snapshot-init` one-shot.
+- **A restore cannot run over an OPEN index.** Close, restore, reopen — and reopen in a `finally`,
+  or a failure leaves a closed index that looks exactly like an empty result set.
+- **Sending credentials to a cluster with security OFF returns 401**, not a shrug. `_auth()`
+  returns nothing unless something is configured.
+- **`ignore=[404]` is deprecated** in the 8.x Python client; `.options(ignore_status=404)` is the
+  replacement. The old form works and prints a `DeprecationWarning` per call.
