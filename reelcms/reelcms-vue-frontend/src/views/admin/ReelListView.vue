@@ -261,7 +261,23 @@ function resetFilters() {
 
   <!-- Hand-rolled rather than Bootstrap's Modal: a native confirm() blocks the
        event loop, and the JS Modal needs imperative show/hide that fights Vue's
-       rendering. A v-if'd overlay is less code and easier to test. -->
+       rendering. A v-if'd overlay is less code and easier to test.
+
+       VUE CONCEPT: <Teleport> moves the rendered DOM to the end of <body> while
+       leaving the component tree alone -- `confirmDelete`, the click handlers
+       and the scoped styles all still belong to THIS component.
+
+       An overlay is `position: fixed`, which sounds like it is already immune to
+       its ancestors. It is not. A `transform`, `filter`, `perspective`,
+       `backdrop-filter` or `contain` on ANY ancestor makes that ancestor the
+       containing block, and the overlay is then positioned and clipped relative
+       to it instead of the viewport. Nothing in this layout does that today, and
+       nothing has to: the failure arrives the day someone adds a hover
+       transform to a wrapper three levels up, and it looks like a CSS bug in the
+       modal rather than in the thing that actually changed.
+
+       Teleporting to <body> means there are no ancestors to get it wrong. -->
+  <Teleport to="body">
   <div
     v-if="confirmDelete"
     class="position-fixed top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center p-3"
@@ -281,4 +297,5 @@ function resetFilters() {
       </div>
     </div>
   </div>
+  </Teleport>
 </template>

@@ -18,10 +18,12 @@
      * Path aliases, so a screen imports `@/features/cart` rather than `../../../features/cart`.
      * Metro reads these from tsconfig automatically (via `expo/metro-config`), so there is no
      * second copy of this mapping to keep in sync.
+     *
+     * No `baseUrl`: TypeScript 6 deprecated it, and paths resolved relative to this file work in
+     * both TypeScript and Metro without it.
      */
-    "baseUrl": ".",
     "paths": {
-      "@/*": ["src/*"]
+      "@/*": ["./src/*"]
     }
   },
   "include": [

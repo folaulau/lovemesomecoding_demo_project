@@ -2,6 +2,7 @@
 import { ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { api } from "../../api";
+import { useDebounced } from "../../composables/useDebounced";
 import { useToastStore } from "../../stores/toast";
 import ReelCard from "../../components/public/ReelCard.vue";
 import LoadingSpinner from "../../components/ui/LoadingSpinner.vue";
@@ -64,6 +65,25 @@ function setFilter(patch) {
 function setPage(page) {
   router.push({ name: "explore", query: { ...route.query, page } });
 }
+
+/*
+ * Search as you type, debounced.
+ *
+ * Submitting the form still works and is instant; this just means you no longer
+ * have to press Enter. The debounce is what makes it affordable - without it,
+ * typing "buzzer" would be six text-index queries, five of them stale before
+ * they returned.
+ *
+ * The guard is load-bearing. `term` is also written by the route watcher above,
+ * so pushing a route unconditionally here would be: type -> push -> route
+ * changes -> term reassigned -> debounce fires -> push again. Comparing against
+ * what is already in the URL stops the loop at the first push.
+ */
+const debouncedTerm = useDebounced(term, 350);
+
+watch(debouncedTerm, (q) => {
+  if (q !== (route.query.q ?? "")) setFilter({ q });
+});
 </script>
 
 <template>

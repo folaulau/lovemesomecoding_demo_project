@@ -1,6 +1,7 @@
 <script setup>
-import { nextTick, onBeforeUnmount, onMounted, ref } from "vue";
+import { nextTick, onMounted, ref } from "vue";
 import { api } from "../../api";
+import { useIntersectionObserver } from "../../composables/useIntersectionObserver";
 import { useToastStore } from "../../stores/toast";
 import ReelPlayer from "../../components/public/ReelPlayer.vue";
 import LoadingSpinner from "../../components/ui/LoadingSpinner.vue";
@@ -33,7 +34,6 @@ const liked = ref(new Set());
 
 const scroller = ref(null);
 const slideEls = ref([]);
-let observer = null;
 
 async function loadPage() {
   if (loadingMore.value || exhausted.value) return;
@@ -53,33 +53,32 @@ async function loadPage() {
   }
 }
 
+// Creating the observer, buffering targets until the DOM exists and
+// disconnecting on unmount all live in the composable. What stays here is the
+// only part that is about the feed: what "on screen" means for a slide.
+const { observe } = useIntersectionObserver(
+  (entries) => {
+    entries.forEach((entry) => {
+      // 0.6 rather than 0.5: at exactly half, two slides can both qualify
+      // mid-scroll and the active index flickers between them.
+      if (entry.isIntersecting && entry.intersectionRatio >= 0.6) {
+        const idx = Number(entry.target.dataset.index);
+        activeIndex.value = idx;
+        // Prefetch a page before hitting the end, so the scroll never stalls.
+        if (idx >= reels.value.length - 2) loadPage();
+      }
+    });
+  },
+  { root: scroller, threshold: [0.6] }
+);
+
 function observeSlides() {
-  if (!observer) return;
   // Re-observing an element already under observation is a no-op, so appending
   // a page does not need any bookkeeping about what was observed before.
-  slideEls.value.forEach((el) => el && observer.observe(el));
+  slideEls.value.forEach((el) => observe(el));
 }
 
-onMounted(async () => {
-  observer = new IntersectionObserver(
-    (entries) => {
-      entries.forEach((entry) => {
-        // 0.6 rather than 0.5: at exactly half, two slides can both qualify
-        // mid-scroll and the active index flickers between them.
-        if (entry.isIntersecting && entry.intersectionRatio >= 0.6) {
-          const idx = Number(entry.target.dataset.index);
-          activeIndex.value = idx;
-          // Prefetch a page before hitting the end, so the scroll never stalls.
-          if (idx >= reels.value.length - 2) loadPage();
-        }
-      });
-    },
-    { root: scroller.value, threshold: [0.6] }
-  );
-  await loadPage();
-});
-
-onBeforeUnmount(() => observer?.disconnect());
+onMounted(loadPage);
 
 async function onLike(reel) {
   const nowLiked = !liked.value.has(reel.id);

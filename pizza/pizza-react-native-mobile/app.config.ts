@@ -26,13 +26,6 @@ const config: ExpoConfig = {
   icon: './assets/icon.png',
   scheme: 'pizzaapp',
   userInterfaceStyle: 'light',
-  newArchEnabled: true,
-
-  splash: {
-    image: './assets/splash-icon.png',
-    resizeMode: 'contain',
-    backgroundColor: PIZZA_CREAM,
-  },
 
   ios: {
     supportsTablet: true,

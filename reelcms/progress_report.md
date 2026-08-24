@@ -227,3 +227,35 @@ Kept because each is a real MongoDB or Spring Boot 4 trap, and each is now comme
 | Donut chart painted **PUBLISHED in the DRAFT colour** | Colours were keyed by array position; the API returns statuses in enum order while the mock returned them published-first |
 | Both "Dashboard" and "Reels" highlighted at once | Vue Router marks a link to an index child active whenever any sibling is |
 | A broken poster **stretched a table row** to 200px | `"4th & Inches"` — a raw `&` makes the inline SVG malformed, so the browser fell back to alt text |
+
+---
+
+## Added for the Vue tutorial track (2026-08-24)
+
+`projects/vue_tutorial` quotes this app for every snippet, and an audit found three things the track
+needed that the app did not have. Two were closed; the rest are taught generically rather than
+faked. See `projects/vue_tutorial/progress_report.md` for the full gap table and the decision.
+
+Both additions are improvements on their own terms — neither exists only to serve a lesson.
+
+| Added | Where | Why it is a real improvement | Serves |
+|---|---|---|---|
+| `useIntersectionObserver` | `src/composables/`, used by `FeedView` | The observer's creation, its pre-mount target buffering and its `disconnect()` were inline in the view. A component can no longer leak it, and what stays in `FeedView` is only the part that is about the feed. | Lesson 15 — the app had **no composables at all** |
+| `useDebounced` | `src/composables/`, used by `ExploreView` | Explore now searches **as you type**. It could not before: submitting the form was the only way to search, because a request per keystroke would be six text-index queries for "buzzer", five of them stale on arrival. | Lesson 15 |
+| `<Teleport to="body">` | the confirm-delete overlay in `ReelListView` | The overlay is `position: fixed`, which is **not** immune to its ancestors — a `transform`, `filter`, `backdrop-filter` or `contain` anywhere above it makes that ancestor the containing block and the overlay is clipped to it. Nothing does that today; teleporting to `<body>` means nothing can. | Lesson 23 |
+
+**Not added, deliberately:** a Vitest unit suite, a `v-autofocus` custom directive, and named/scoped
+slots. Each would have been a change made purely to serve a lesson, and the lessons say plainly that
+the app's own suite is Playwright end-to-end and show the rest as generic examples.
+
+### Verification
+
+`npm run build` passes. `npm run test:public` — **12/12 pass**, including the two that exercise the
+changes directly (cursor paging through the observer, and explore search). `npm run test:admin` —
+**12/13**, and test 8 `create → publish → appears publicly → delete` (the one that drives the
+teleported modal) passes.
+
+⚠️ The single admin failure, *"the headline total agrees with the daily chart"*, is **pre-existing
+and unrelated**. Confirmed by stashing the changes and re-running it: identical result, a drift of
+63 against a threshold of 20. It is an aggregation disagreement between the headline total and the
+daily chart sum — worth chasing separately, and nothing to do with the frontend.
