@@ -5,6 +5,8 @@ lovemesomecoding.com. Readability and teachability outrank cleverness. Where a "
 choice and a "clear teaching example" choice conflict, prefer the teaching one and leave a comment
 saying what production would do differently.
 
+https://claude.ai/code/artifact/88475282-97a5-4df2-ad0a-a48fd356c8b5?via=auto_preview
+
 **`progress_report.md` in this directory is the shared context — read it first when resuming.**
 This file is the standing instructions; that one is the state. `README.md` is for a reader arriving
 at the repo.

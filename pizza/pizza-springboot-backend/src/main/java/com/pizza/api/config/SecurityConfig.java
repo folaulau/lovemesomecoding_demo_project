@@ -134,7 +134,15 @@ public class SecurityConfig {
                         // ---- admin ---------------------------------------------------------
                         .requestMatchers("/api/admin/**")
                         .hasRole("ADMIN")
-                        .requestMatchers("/actuator/health")
+                        // ⚠️ /** matters. This rule used to be "/actuator/health" exactly, which
+                        // left /actuator/health/alb - the health GROUP an AWS load balancer
+                        // polls - falling through to .anyRequest().authenticated() and
+                        // returning 403. An ALB reads 403 as unhealthy and kills the task, so
+                        // the ECS service cycles forever with no useful error anywhere.
+                        //
+                        // Only `health` is exposed at all (see application.properties), so the
+                        // wildcard cannot reach /actuator/env or anything else that matters.
+                        .requestMatchers("/actuator/health", "/actuator/health/**")
                         .permitAll()
 
                         // Default deny. Anything not listed above needs authentication, so a new

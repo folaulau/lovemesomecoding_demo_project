@@ -1,0 +1,1679 @@
+<title>ReelCMS Developer Guide</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap">
+
+<style>
+  /* ---------------------------------------------------------------------
+     Tokens. :root carries the COMPLETE light palette; the two blocks below
+     redefine only the values, so every component below styles through a
+     token and never inside a media or [data-theme] block.
+     --------------------------------------------------------------------- */
+  :root {
+    --bg: #f6f5f9;
+    --surface: #ffffff;
+    --surface-2: #eeecf4;
+    --ink: #17151f;
+    --ink-soft: #3d3950;
+    --muted: #5d596c;
+    --faint: #837f92;
+    --line: #e3e0eb;
+    --line-strong: #cbc6da;
+    --accent: #c42a6e;
+    --accent-soft: rgba(196, 42, 110, 0.09);
+
+    /* Semantic markers. These are the guide's structural device: every
+       diagram and table uses the same three, and they mean the same thing
+       everywhere - which is the single most important idea in the app. */
+    --embed: #b45309;
+    --embed-soft: rgba(180, 83, 9, 0.12);
+    --ref: #0e7490;
+    --ref-soft: rgba(14, 116, 144, 0.12);
+    --warn: #a16207;
+    --warn-soft: rgba(161, 98, 7, 0.1);
+
+    --shadow: 0 1px 2px rgba(23, 21, 31, 0.05), 0 8px 24px rgba(23, 21, 31, 0.06);
+    --radius: 10px;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0d0c12;
+      --surface: #16151e;
+      --surface-2: #1e1d29;
+      --ink: #e9e7f0;
+      --ink-soft: #cbc7d8;
+      --muted: #9c97ac;
+      --faint: #7a7589;
+      --line: #2a2837;
+      --line-strong: #3b3850;
+      --accent: #f0679f;
+      --accent-soft: rgba(240, 103, 159, 0.13);
+
+      --embed: #f0a020;
+      --embed-soft: rgba(240, 160, 32, 0.15);
+      --ref: #35c7e8;
+      --ref-soft: rgba(53, 199, 232, 0.14);
+      --warn: #e3b341;
+      --warn-soft: rgba(227, 179, 65, 0.13);
+
+      --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 10px 30px rgba(0, 0, 0, 0.35);
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --bg: #0d0c12;
+    --surface: #16151e;
+    --surface-2: #1e1d29;
+    --ink: #e9e7f0;
+    --ink-soft: #cbc7d8;
+    --muted: #9c97ac;
+    --faint: #7a7589;
+    --line: #2a2837;
+    --line-strong: #3b3850;
+    --accent: #f0679f;
+    --accent-soft: rgba(240, 103, 159, 0.13);
+
+    --embed: #f0a020;
+    --embed-soft: rgba(240, 160, 32, 0.15);
+    --ref: #35c7e8;
+    --ref-soft: rgba(53, 199, 232, 0.14);
+    --warn: #e3b341;
+    --warn-soft: rgba(227, 179, 65, 0.13);
+
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 10px 30px rgba(0, 0, 0, 0.35);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: "Source Serif 4", Georgia, "Times New Roman", serif;
+    font-size: 17px;
+    line-height: 1.65;
+    margin: 0;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ------------------------------------------------------------ layout */
+
+  .shell {
+    max-width: 1220px;
+    margin: 0 auto;
+    padding: 0 24px 120px;
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 48px;
+  }
+
+  @media (min-width: 1080px) {
+    .shell {
+      grid-template-columns: 214px minmax(0, 1fr);
+      align-items: start;
+      gap: 56px;
+    }
+  }
+
+  main { min-width: 0; }
+
+  section { margin-bottom: 72px; scroll-margin-top: 24px; }
+
+  .prose { max-width: 68ch; }
+
+  /* --------------------------------------------------------- typography */
+
+  h1, h2, h3, h4 {
+    font-family: Archivo, "Helvetica Neue", Arial, sans-serif;
+    text-wrap: balance;
+    margin: 0;
+  }
+
+  h1 {
+    font-size: clamp(2.4rem, 6vw, 3.6rem);
+    font-weight: 800;
+    letter-spacing: -0.035em;
+    line-height: 1.02;
+  }
+
+  h2 {
+    font-size: clamp(1.5rem, 3vw, 1.95rem);
+    font-weight: 700;
+    letter-spacing: -0.022em;
+    line-height: 1.15;
+    padding-bottom: 14px;
+    border-bottom: 1px solid var(--line);
+    margin-bottom: 26px;
+  }
+
+  h3 {
+    font-size: 1.16rem;
+    font-weight: 650;
+    letter-spacing: -0.012em;
+    margin: 38px 0 12px;
+  }
+
+  h4 {
+    font-size: 0.95rem;
+    font-weight: 650;
+    margin: 26px 0 8px;
+  }
+
+  p { margin: 0 0 17px; }
+  .prose > p:last-child, .prose > ul:last-child { margin-bottom: 0; }
+
+  a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+  a:focus-visible, button:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 3px;
+    border-radius: 3px;
+  }
+
+  strong { font-weight: 600; color: var(--ink); }
+
+  ul, ol { margin: 0 0 17px; padding-left: 22px; }
+  li { margin-bottom: 7px; }
+  li::marker { color: var(--faint); }
+
+  .eyebrow {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--faint);
+  }
+
+  .lede {
+    font-size: 1.2rem;
+    line-height: 1.55;
+    color: var(--ink-soft);
+    max-width: 60ch;
+  }
+
+  code, kbd, .mono {
+    font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+
+  :not(pre) > code {
+    font-size: 0.855em;
+    background: var(--surface-2);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    padding: 0.1em 0.36em;
+    color: var(--ink-soft);
+    white-space: nowrap;
+  }
+
+  pre {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 16px 18px;
+    overflow-x: auto;
+    margin: 0 0 20px;
+    font-size: 0.82rem;
+    line-height: 1.62;
+  }
+
+  pre code {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    color: var(--ink-soft);
+    white-space: pre;
+  }
+
+  .cmt { color: var(--faint); }
+  .kw  { color: var(--accent); }
+
+  /* ------------------------------------------------------------- header */
+
+  header.masthead {
+    grid-column: 1 / -1;
+    padding: 72px 0 44px;
+    border-bottom: 1px solid var(--line);
+    margin-bottom: 8px;
+  }
+
+  .title-row { display: flex; align-items: center; gap: 14px; margin-bottom: 22px; }
+
+  .mark {
+    width: 40px; height: 40px;
+    border-radius: 11px;
+    background: linear-gradient(135deg, #7c3aed 0%, #e0397f 55%, #f97316 100%);
+    display: grid; place-items: center;
+    flex-shrink: 0;
+  }
+  .mark svg { width: 17px; height: 17px; display: block; }
+
+  .chips { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 26px; }
+
+  .chip {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 0.72rem;
+    font-weight: 500;
+    padding: 4px 10px;
+    border-radius: 999px;
+    border: 1px solid var(--line-strong);
+    color: var(--muted);
+    background: var(--surface);
+    white-space: nowrap;
+  }
+
+  /* ---------------------------------------------------------------- toc */
+
+  .toc { font-family: Archivo, sans-serif; }
+
+  @media (min-width: 1080px) {
+    .toc { position: sticky; top: 24px; max-height: calc(100vh - 48px); overflow-y: auto; }
+  }
+
+  .toc-title {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.68rem;
+    font-weight: 600;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--faint);
+    margin-bottom: 12px;
+  }
+
+  .toc ol { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 1px; }
+
+  .toc a {
+    display: block;
+    padding: 5px 10px;
+    font-size: 0.845rem;
+    font-weight: 500;
+    color: var(--muted);
+    text-decoration: none;
+    border-radius: 6px;
+    border-left: 2px solid transparent;
+  }
+  .toc a:hover { background: var(--surface-2); color: var(--ink); }
+  .toc li.sub a { padding-left: 22px; font-size: 0.8rem; color: var(--faint); }
+
+  /* ------------------------------------------------------------- tables */
+
+  .table-wrap {
+    overflow-x: auto;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: var(--surface);
+    margin-bottom: 22px;
+  }
+
+  table { border-collapse: collapse; width: 100%; font-size: 0.855rem; }
+
+  th, td {
+    text-align: left;
+    padding: 10px 15px;
+    border-bottom: 1px solid var(--line);
+    vertical-align: top;
+  }
+  tbody tr:last-child td { border-bottom: none; }
+
+  th {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.68rem;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--faint);
+    white-space: nowrap;
+    background: var(--surface-2);
+  }
+
+  td { color: var(--ink-soft); font-family: "Source Serif 4", Georgia, serif; }
+  td.m, td .m { font-family: "IBM Plex Mono", monospace; font-size: 0.79rem; }
+  td.num { font-variant-numeric: tabular-nums; text-align: right; }
+  td.nowrap { white-space: nowrap; }
+
+  /* --------------------------------------------------- semantic markers */
+
+  .tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.66rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 2px 7px;
+    border-radius: 4px;
+    white-space: nowrap;
+  }
+  .tag::before { content: ""; width: 7px; height: 7px; border-radius: 2px; flex-shrink: 0; }
+
+  .tag.embed { color: var(--embed); background: var(--embed-soft); }
+  .tag.embed::before { background: var(--embed); }
+
+  .tag.ref { color: var(--ref); background: var(--ref-soft); }
+  .tag.ref::before { background: var(--ref); }
+
+  .tag.both { color: var(--ref); background: var(--ref-soft); }
+  .tag.both::before {
+    background: linear-gradient(90deg, var(--ref) 0 50%, var(--embed) 50% 100%);
+    width: 12px;
+  }
+
+  .method {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.68rem;
+    font-weight: 600;
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: var(--surface-2);
+    color: var(--muted);
+    border: 1px solid var(--line);
+  }
+  .method.get { color: var(--ref); border-color: var(--ref-soft); background: var(--ref-soft); }
+  .method.post, .method.put, .method.patch { color: var(--embed); border-color: var(--embed-soft); background: var(--embed-soft); }
+  .method.del { color: var(--accent); border-color: var(--accent-soft); background: var(--accent-soft); }
+
+  .lock {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.66rem;
+    color: var(--faint);
+    white-space: nowrap;
+  }
+
+  /* ------------------------------------------------------------ figures */
+
+  figure {
+    margin: 0 0 26px;
+    padding: 22px 20px 16px;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    overflow-x: auto;
+  }
+
+  figure svg {
+    display: block;
+    width: 100%;
+    max-width: 100%;
+    height: auto;
+    color: var(--ink-soft);
+    min-width: 520px;
+  }
+
+  figcaption {
+    font-size: 0.83rem;
+    line-height: 1.5;
+    color: var(--muted);
+    margin-top: 16px;
+    padding-top: 13px;
+    border-top: 1px solid var(--line);
+    max-width: 74ch;
+  }
+
+  .legend { display: flex; flex-wrap: wrap; gap: 14px; margin: 22px 0 18px; }
+
+  /* -------------------------------------------------------------- notes */
+
+  .note {
+    border-left: 3px solid var(--accent);
+    background: var(--accent-soft);
+    border-radius: 0 var(--radius) var(--radius) 0;
+    padding: 14px 18px;
+    margin: 0 0 22px;
+    font-size: 0.93rem;
+  }
+  .note p:last-child { margin-bottom: 0; }
+  .note.trap { border-left-color: var(--warn); background: var(--warn-soft); }
+
+  .note-label {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.66rem;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--accent);
+    display: block;
+    margin-bottom: 5px;
+  }
+  .note.trap .note-label { color: var(--warn); }
+
+  .cards { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); margin-bottom: 24px; }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 16px 18px;
+  }
+  .card h4 { margin: 0 0 6px; }
+  .card p { font-size: 0.87rem; color: var(--muted); margin: 0; }
+
+  .tree {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.79rem;
+    line-height: 1.85;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 18px 20px;
+    overflow-x: auto;
+    margin-bottom: 22px;
+    color: var(--ink-soft);
+  }
+  .tree .dir { color: var(--accent); font-weight: 500; }
+  .tree .note-i { color: var(--faint); }
+
+  footer.end {
+    grid-column: 1 / -1;
+    border-top: 1px solid var(--line);
+    padding-top: 22px;
+    font-size: 0.85rem;
+    color: var(--faint);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px 24px;
+    justify-content: space-between;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+  }
+  html { scroll-behavior: smooth; }
+</style>
+
+<div class="shell">
+
+  <header class="masthead">
+    <div class="title-row">
+      <span class="mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M8 5.5 18 12 8 18.5z" fill="#fff"/></svg>
+      </span>
+      <span class="eyebrow">Developer guide</span>
+    </div>
+    <h1>ReelCMS</h1>
+    <p class="lede" style="margin-top:18px">
+      A short-video CMS built on MongoDB — a public feed, an authoring studio, and a live
+      analytics dashboard. This guide covers how the pieces fit together, how the six
+      collections relate, and which decisions are load-bearing.
+    </p>
+    <div class="chips">
+      <span class="chip">Vue&nbsp;3 + Vite</span>
+      <span class="chip">Bootstrap&nbsp;5</span>
+      <span class="chip">Spring&nbsp;Boot&nbsp;4.1</span>
+      <span class="chip">Java&nbsp;21</span>
+      <span class="chip">Spring&nbsp;Data&nbsp;MongoDB&nbsp;5.1</span>
+      <span class="chip">MongoDB&nbsp;8 (replica set)</span>
+      <span class="chip">JWT auth</span>
+      <span class="chip">66 + 25 tests</span>
+    </div>
+  </header>
+
+  <nav class="toc" aria-label="Contents">
+    <div class="toc-title">Contents</div>
+    <ol>
+      <li><a href="#architecture">Architecture</a></li>
+      <li><a href="#model">The data model</a></li>
+      <li class="sub"><a href="#relations">Collection relations</a></li>
+      <li class="sub"><a href="#embed">Embed or reference</a></li>
+      <li class="sub"><a href="#snapshot">The creator snapshot</a></li>
+      <li class="sub"><a href="#indexes">Indexes</a></li>
+      <li><a href="#backend">Backend</a></li>
+      <li><a href="#frontend">Frontend</a></li>
+      <li><a href="#flows">Key flows</a></li>
+      <li class="sub"><a href="#paging">Feed pagination</a></li>
+      <li class="sub"><a href="#views">Recording a view</a></li>
+      <li class="sub"><a href="#reports">The dashboard</a></li>
+      <li><a href="#api">API reference</a></li>
+      <li><a href="#auth">Auth &amp; roles</a></li>
+      <li><a href="#running">Running it</a></li>
+      <li><a href="#traps">Traps</a></li>
+    </ol>
+  </nav>
+
+  <main>
+
+    <!-- ============================================ ARCHITECTURE -->
+    <section id="architecture">
+      <h2>Architecture</h2>
+
+      <div class="prose">
+        <p>
+          Three processes: a Vue single-page app, a Spring Boot API, and MongoDB running as a
+          single-node replica set. The frontend never talks to MongoDB, and the API never
+          renders HTML.
+        </p>
+        <p>
+          What makes the shape interesting is the <strong>second path</strong>. Ordinary reads and
+          writes go browser&nbsp;→&nbsp;API&nbsp;→&nbsp;database and back. But the admin dashboard's
+          live counters travel the other way: MongoDB pushes each write to the API through a change
+          stream on the oplog, and the API forwards it to connected browsers over
+          server-sent events. Nothing polls, anywhere.
+        </p>
+      </div>
+
+      <figure>
+        <svg viewBox="0 0 900 300" role="img"
+             aria-label="Requests flow from the browser through the API to MongoDB and back; separately, MongoDB's oplog feeds a change stream in the API which pushes server-sent events to the browser without polling.">
+          <defs>
+            <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M0 0 L10 5 L0 10 z" fill="currentColor"/>
+            </marker>
+            <marker id="ar-a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M0 0 L10 5 L0 10 z" fill="var(--accent)"/>
+            </marker>
+          </defs>
+
+          <!-- boxes -->
+          <g fill="var(--surface-2)" stroke="var(--line-strong)" stroke-width="1.5">
+            <rect x="24"  y="66" width="196" height="86" rx="8"/>
+            <rect x="352" y="66" width="196" height="86" rx="8"/>
+            <rect x="680" y="66" width="196" height="86" rx="8"/>
+          </g>
+
+          <g font-family="IBM Plex Mono, monospace" text-anchor="middle">
+            <text x="122" y="98"  font-size="13" font-weight="600" fill="currentColor">Browser</text>
+            <text x="122" y="118" font-size="11" fill="var(--muted)">Vue 3 SPA</text>
+            <text x="122" y="136" font-size="10" fill="var(--faint)">:5176</text>
+
+            <text x="450" y="98"  font-size="13" font-weight="600" fill="currentColor">API</text>
+            <text x="450" y="118" font-size="11" fill="var(--muted)">Spring Boot</text>
+            <text x="450" y="136" font-size="10" fill="var(--faint)">:8087</text>
+
+            <text x="778" y="98"  font-size="13" font-weight="600" fill="currentColor">MongoDB</text>
+            <text x="778" y="118" font-size="11" fill="var(--muted)">replica set rs0</text>
+            <text x="778" y="136" font-size="10" fill="var(--faint)">:27018</text>
+          </g>
+
+          <!-- forward path -->
+          <g stroke="currentColor" stroke-width="1.6" fill="none" marker-end="url(#ar)">
+            <line x1="220" y1="96" x2="346" y2="96"/>
+            <line x1="548" y1="96" x2="674" y2="96"/>
+          </g>
+          <g font-family="IBM Plex Mono, monospace" font-size="10.5" fill="var(--muted)" text-anchor="middle">
+            <text x="283" y="86">JSON / HTTP</text>
+            <text x="611" y="86">queries, $inc</text>
+          </g>
+
+          <!-- return path (accent) -->
+          <g stroke="var(--accent)" stroke-width="1.6" fill="none" marker-end="url(#ar-a)">
+            <path d="M674 128 L560 128 L548 128"/>
+            <path d="M346 128 L232 128 L220 128"/>
+          </g>
+          <g font-family="IBM Plex Mono, monospace" font-size="10.5" fill="var(--accent)" text-anchor="middle">
+            <text x="611" y="145">documents</text>
+            <text x="283" y="145">DTOs</text>
+          </g>
+
+          <!-- change stream path -->
+          <g stroke="var(--ref)" stroke-width="1.6" fill="none" stroke-dasharray="5 4" marker-end="url(#ar)" color="var(--ref)">
+            <path d="M778 152 L778 226 L450 226"/>
+            <path d="M450 226 L122 226 L122 158"/>
+          </g>
+          <g font-family="IBM Plex Mono, monospace" font-size="10.5" fill="var(--ref)" text-anchor="middle">
+            <text x="640" y="216">oplog → change stream</text>
+            <text x="286" y="216">SSE</text>
+          </g>
+          <circle cx="450" cy="226" r="4" fill="var(--ref)"/>
+          <text x="450" y="252" font-family="IBM Plex Mono, monospace" font-size="10.5" fill="var(--ref)" text-anchor="middle">ReelStatsStreamService</text>
+
+          <text x="24" y="286" font-family="IBM Plex Mono, monospace" font-size="10" fill="var(--faint)">
+            solid = request/response · dashed = pushed, no polling
+          </text>
+        </svg>
+        <figcaption>
+          The dashed path is why MongoDB runs as a replica set rather than a standalone: change
+          streams are built on the oplog, and a standalone <code>mongod</code> has no oplog at all.
+        </figcaption>
+      </figure>
+    </section>
+
+    <!-- ============================================ DATA MODEL -->
+    <section id="model">
+      <h2>The data model</h2>
+
+      <div class="prose">
+        <p>
+          Six collections. MongoDB has no foreign keys, no joins at write time and no cascade —
+          so every relationship below is a convention the application enforces, and the interesting
+          question for each one is <em>embed or reference</em>.
+        </p>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Collection</th>
+              <th>Holds</th>
+              <th>Notes</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="m nowrap">reels</td>
+              <td>The aggregate root — one document per reel</td>
+              <td>Carries its video, tags, stats and a creator snapshot inline</td>
+            </tr>
+            <tr>
+              <td class="m nowrap">creators</td>
+              <td>The canonical public profile</td>
+              <td>Referenced from reels, comments and view events</td>
+            </tr>
+            <tr>
+              <td class="m nowrap">comments</td>
+              <td>One document per comment</td>
+              <td>Separate collection because the count is unbounded</td>
+            </tr>
+            <tr>
+              <td class="m nowrap">reel_collections</td>
+              <td>Curated highlight sets</td>
+              <td>Named to avoid "collection" meaning two things in one sentence</td>
+            </tr>
+            <tr>
+              <td class="m nowrap">view_events</td>
+              <td>One document per playback</td>
+              <td><strong>Time-series collection</strong>, 90-day TTL</td>
+            </tr>
+            <tr>
+              <td class="m nowrap">users</td>
+              <td>Sign-in accounts</td>
+              <td>Separate from creators — an admin is not a creator</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3 id="relations">Collection relations</h3>
+
+      <div class="prose">
+        <p>
+          Read the diagram with the colour key in mind: <span class="tag embed">embedded</span>
+          data lives <em>inside</em> the document and is read with it for free;
+          <span class="tag ref">referenced</span> data is an id pointing at another collection, and
+          costs a second query or a <code>$lookup</code>.
+        </p>
+      </div>
+
+      <div class="legend">
+        <span class="tag embed">embedded</span>
+        <span class="tag ref">referenced</span>
+        <span class="tag both">reference + embedded copy</span>
+      </div>
+
+      <figure>
+        <svg viewBox="0 0 1000 800" role="img"
+             aria-label="Entity relationship diagram of six MongoDB collections. Reels sits at the centre and embeds video, tags and stats, references collection ids, and carries a creator reference with a copied snapshot. Comments and view events reference reels. View events and users reference creators. Reels and reel_collections reference each other in both directions.">
+          <defs>
+            <marker id="er" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M0 0 L10 5 L0 10 z" fill="var(--ref)"/>
+            </marker>
+            <marker id="er-s" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M10 0 L0 5 L10 10 z" fill="var(--ref)"/>
+            </marker>
+          </defs>
+
+          <!-- ============ reels (centre) ============ -->
+          <rect x="370" y="40" width="290" height="336" rx="9" fill="var(--surface-2)" stroke="var(--line-strong)" stroke-width="1.5"/>
+          <rect x="370" y="40" width="290" height="34" rx="9" fill="var(--accent-soft)"/>
+          <rect x="370" y="64" width="290" height="10" fill="var(--accent-soft)"/>
+          <text x="386" y="63" font-family="IBM Plex Mono, monospace" font-size="13" font-weight="600" fill="var(--accent)">reels</text>
+          <text x="644" y="63" font-family="IBM Plex Mono, monospace" font-size="10" fill="var(--faint)" text-anchor="end">aggregate root</text>
+
+          <g font-family="IBM Plex Mono, monospace" font-size="11.5" fill="var(--ink-soft)">
+            <text x="386" y="101">_id</text>
+            <text x="386" y="127">slug</text>
+            <text x="386" y="153">title · description</text>
+            <text x="386" y="179">status · publishedAt</text>
+            <text x="404" y="209">video { … }</text>
+            <text x="404" y="235">creator { … }</text>
+            <text x="404" y="261">tags [ … ]</text>
+            <text x="404" y="287">collectionIds [ ]</text>
+            <text x="404" y="313">stats { … }</text>
+            <text x="386" y="345">createdAt · updatedAt</text>
+          </g>
+          <g font-family="IBM Plex Mono, monospace" font-size="9.5" fill="var(--faint)" text-anchor="end">
+            <text x="644" y="127">unique idx</text>
+            <text x="644" y="209">1:1</text>
+            <text x="644" y="261">multikey idx</text>
+            <text x="644" y="313">$inc counters</text>
+          </g>
+          <!-- markers -->
+          <g>
+            <rect x="386" y="201" width="8" height="8" rx="2" fill="var(--embed)"/>
+            <rect x="386" y="253" width="8" height="8" rx="2" fill="var(--embed)"/>
+            <rect x="386" y="305" width="8" height="8" rx="2" fill="var(--embed)"/>
+            <rect x="386" y="279" width="8" height="8" rx="2" fill="var(--ref)"/>
+            <rect x="386" y="227" width="4" height="8" rx="1" fill="var(--ref)"/>
+            <rect x="390" y="227" width="4" height="8" rx="1" fill="var(--embed)"/>
+          </g>
+
+          <!-- ============ creators ============ -->
+          <rect x="40" y="190" width="212" height="150" rx="9" fill="var(--surface-2)" stroke="var(--line-strong)" stroke-width="1.5"/>
+          <rect x="40" y="190" width="212" height="32" rx="9" fill="var(--surface)"/>
+          <rect x="40" y="212" width="212" height="10" fill="var(--surface)"/>
+          <text x="56" y="212" font-family="IBM Plex Mono, monospace" font-size="12.5" font-weight="600" fill="currentColor">creators</text>
+          <g font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--ink-soft)">
+            <text x="56" y="248">_id</text>
+            <text x="56" y="272">username</text>
+            <text x="56" y="296">displayName · avatarUrl</text>
+            <text x="56" y="320">bio · followerCount</text>
+          </g>
+          <text x="236" y="272" font-family="IBM Plex Mono, monospace" font-size="9.5" fill="var(--faint)" text-anchor="end">unique</text>
+
+          <!-- ============ comments ============ -->
+          <rect x="758" y="60" width="204" height="150" rx="9" fill="var(--surface-2)" stroke="var(--line-strong)" stroke-width="1.5"/>
+          <rect x="758" y="60" width="204" height="32" rx="9" fill="var(--surface)"/>
+          <rect x="758" y="82" width="204" height="10" fill="var(--surface)"/>
+          <text x="774" y="82" font-family="IBM Plex Mono, monospace" font-size="12.5" font-weight="600" fill="currentColor">comments</text>
+          <g font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--ink-soft)">
+            <text x="774" y="118">_id</text>
+            <text x="792" y="142">reelId</text>
+            <text x="792" y="166">author { … }</text>
+            <text x="774" y="190">body · likes · createdAt</text>
+          </g>
+          <rect x="774" y="134" width="8" height="8" rx="2" fill="var(--ref)"/>
+          <rect x="774" y="158" width="8" height="8" rx="2" fill="var(--embed)"/>
+
+          <!-- ============ reel_collections ============ -->
+          <rect x="758" y="290" width="204" height="132" rx="9" fill="var(--surface-2)" stroke="var(--line-strong)" stroke-width="1.5"/>
+          <rect x="758" y="290" width="204" height="32" rx="9" fill="var(--surface)"/>
+          <rect x="758" y="312" width="204" height="10" fill="var(--surface)"/>
+          <text x="774" y="312" font-family="IBM Plex Mono, monospace" font-size="12.5" font-weight="600" fill="currentColor">reel_collections</text>
+          <g font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--ink-soft)">
+            <text x="774" y="348">_id · slug</text>
+            <text x="774" y="372">name · description</text>
+            <text x="792" y="398">reelIds [ ]</text>
+          </g>
+          <rect x="774" y="390" width="8" height="8" rx="2" fill="var(--ref)"/>
+
+          <!-- ============ view_events ============ -->
+          <rect x="370" y="470" width="290" height="180" rx="9" fill="var(--surface-2)" stroke="var(--line-strong)" stroke-width="1.5"/>
+          <rect x="370" y="470" width="290" height="32" rx="9" fill="var(--surface)"/>
+          <rect x="370" y="492" width="290" height="10" fill="var(--surface)"/>
+          <text x="386" y="492" font-family="IBM Plex Mono, monospace" font-size="12.5" font-weight="600" fill="currentColor">view_events</text>
+          <text x="644" y="492" font-family="IBM Plex Mono, monospace" font-size="9.5" fill="var(--embed)" text-anchor="end">time-series</text>
+          <g font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--ink-soft)">
+            <text x="386" y="528">ts</text>
+            <text x="386" y="552">metadata {</text>
+            <text x="422" y="576">reelId</text>
+            <text x="422" y="600">creatorId</text>
+            <text x="386" y="624">  country · device }</text>
+          </g>
+          <rect x="404" y="568" width="8" height="8" rx="2" fill="var(--ref)"/>
+          <rect x="404" y="592" width="8" height="8" rx="2" fill="var(--ref)"/>
+          <text x="644" y="528" font-family="IBM Plex Mono, monospace" font-size="9.5" fill="var(--faint)" text-anchor="end">timeField</text>
+          <text x="644" y="552" font-family="IBM Plex Mono, monospace" font-size="9.5" fill="var(--faint)" text-anchor="end">metaField · TTL 90d</text>
+
+          <!-- ============ users ============ -->
+          <rect x="40" y="480" width="212" height="140" rx="9" fill="var(--surface-2)" stroke="var(--line-strong)" stroke-width="1.5"/>
+          <rect x="40" y="480" width="212" height="32" rx="9" fill="var(--surface)"/>
+          <rect x="40" y="502" width="212" height="10" fill="var(--surface)"/>
+          <text x="56" y="502" font-family="IBM Plex Mono, monospace" font-size="12.5" font-weight="600" fill="currentColor">users</text>
+          <g font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--ink-soft)">
+            <text x="56" y="538">_id · email</text>
+            <text x="56" y="562">passwordHash</text>
+            <text x="56" y="586">roles [ ]</text>
+            <text x="74" y="610">creatorId</text>
+          </g>
+          <rect x="56" y="602" width="8" height="8" rx="2" fill="var(--ref)"/>
+
+          <!-- ============ EDGES ============ -->
+          <g stroke="var(--ref)" stroke-width="1.5" fill="none">
+            <!-- creators <- reels.creator.id -->
+            <line x1="252" y1="240" x2="364" y2="240" marker-start="url(#er-s)"/>
+            <!-- comments.reelId -> reels -->
+            <line x1="752" y1="140" x2="666" y2="140" marker-end="url(#er)"/>
+            <!-- reels <-> reel_collections -->
+            <line x1="666" y1="345" x2="752" y2="345" marker-end="url(#er)" marker-start="url(#er-s)"/>
+            <!-- view_events -> reels -->
+            <line x1="515" y1="464" x2="515" y2="382" marker-end="url(#er)"/>
+            <!-- view_events -> creators -->
+            <path d="M364 545 L310 545 L310 300 L258 300" marker-end="url(#er)"/>
+            <!-- users -> creators -->
+            <line x1="146" y1="474" x2="146" y2="346" marker-end="url(#er)"/>
+          </g>
+
+          <g font-family="IBM Plex Mono, monospace" font-size="10" fill="var(--ref)">
+            <text x="308" y="232" text-anchor="middle">creator.id</text>
+            <text x="308" y="258" text-anchor="middle" fill="var(--faint)">+ 3 fields copied</text>
+
+            <text x="709" y="132" text-anchor="middle">reelId</text>
+            <text x="709" y="156" text-anchor="middle" fill="var(--faint)">many → 1</text>
+
+            <text x="709" y="337" text-anchor="middle">many ↔ many</text>
+            <text x="709" y="361" text-anchor="middle" fill="var(--faint)">both sides</text>
+
+            <text x="527" y="428" >metadata.reelId</text>
+            <text x="527" y="448" fill="var(--faint)">stored as ObjectId</text>
+
+            <text x="322" y="420">metadata.creatorId</text>
+
+            <text x="158" y="420">creatorId</text>
+            <text x="158" y="440" fill="var(--faint)">null for ADMIN</text>
+          </g>
+
+          <text x="40" y="700" font-family="IBM Plex Mono, monospace" font-size="10" fill="var(--faint)">
+            No foreign keys exist. Every edge above is enforced by application code, not the database.
+          </text>
+          <text x="40" y="722" font-family="IBM Plex Mono, monospace" font-size="10" fill="var(--faint)">
+            Deleting a reel therefore has to remove its comments and collection memberships by hand — see ReelServiceImpl.delete().
+          </text>
+        </svg>
+        <figcaption>
+          Six collections and the six references between them. The two-tone marker on
+          <code>reels.creator</code> is the one relationship that is both: an id that points at
+          <code>creators</code>, plus a copy of three display fields so the feed renders without a join.
+        </figcaption>
+      </figure>
+
+      <h3 id="embed">Embed or reference</h3>
+
+      <div class="prose">
+        <p>
+          One rule decides all six cases: <strong>embed what is bounded, reference what grows.</strong>
+          Applied to <code>reels</code>, it produces this:
+        </p>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Field</th>
+              <th>Choice</th>
+              <th>Why</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="m nowrap">video</td>
+              <td class="nowrap"><span class="tag embed">embedded</span></td>
+              <td>1:1 with the reel, and no query wants a video without its reel. A join would buy nothing.</td>
+            </tr>
+            <tr>
+              <td class="m nowrap">tags</td>
+              <td class="nowrap"><span class="tag embed">embedded</span></td>
+              <td>A handful, forever. Always displayed, and a multikey index makes <code>{tags: "nba"}</code> an index seek.</td>
+            </tr>
+            <tr>
+              <td class="m nowrap">stats</td>
+              <td class="nowrap"><span class="tag embed">embedded</span></td>
+              <td>Four counters moved with <code>$inc</code> — atomic on a single document, no transaction needed.</td>
+            </tr>
+            <tr>
+              <td class="m nowrap">creator</td>
+              <td class="nowrap"><span class="tag both">both</span></td>
+              <td>Referenced by id, with three display fields copied so the feed needs no <code>$lookup</code>. See below.</td>
+            </tr>
+            <tr>
+              <td class="m nowrap">collectionIds</td>
+              <td class="nowrap"><span class="tag ref">referenced</span></td>
+              <td>Many-to-many, and collections are edited independently of the reels in them.</td>
+            </tr>
+            <tr>
+              <td class="m nowrap">comments</td>
+              <td class="nowrap"><span class="tag ref">referenced</span></td>
+              <td>Not a field at all — its own collection. This is the decision that matters most.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="note trap">
+        <span class="note-label">Why comments are not an array</span>
+        <p>
+          Embedding them is the instinct, and for a small blog it is right. Here it fails three ways
+          at three different scales: a document is capped at <strong>16&nbsp;MB</strong>, so a viral
+          reel eventually cannot accept another comment; every feed query would read the entire
+          thread off disk to render a card that shows none of it; and appending to an array rewrites
+          the document while <code>stats</code> is being <code>$inc</code>'d on every view.
+        </p>
+      </div>
+
+      <h3 id="snapshot">The creator snapshot, and what it costs</h3>
+
+      <div class="prose">
+        <p>
+          Every reel carries a copy of its creator's <code>username</code>,
+          <code>displayName</code> and <code>avatarUrl</code>. The <code>id</code> is the source of
+          truth; those three are a cache the application is responsible for invalidating.
+        </p>
+        <p>
+          <strong>What it buys:</strong> the public feed — the hottest query in the system — stays a
+          single index scan over one collection, with no join.
+        </p>
+        <p>
+          <strong>What it costs:</strong> renaming a creator has to rewrite that copy on every reel
+          they own. <code>CreatorServiceImpl.update()</code> does it in one statement, and the admin
+          dialog tells you how many reels are about to be touched — the trade is shown to the person
+          paying it, not hidden.
+        </p>
+      </div>
+
+<pre><code><span class="cmt">// ReelDAOImp — the bill for denormalization, paid in one statement</span>
+mongo.updateMulti(
+    Query.query(Criteria.where(<span class="kw">"creator.id"</span>).is(creatorId)),
+    <span class="kw">new</span> Update()
+        .set(<span class="kw">"creator.username"</span>,    username)
+        .set(<span class="kw">"creator.displayName"</span>, displayName)
+        .set(<span class="kw">"creator.avatarUrl"</span>,   avatarUrl),
+    Reel.class);</code></pre>
+
+      <div class="prose">
+        <p>
+          The rule of thumb: <strong>denormalize fields that are read constantly and change rarely.</strong>
+          A display name qualifies. <code>followerCount</code> does not — it moves every minute, and
+          is deliberately left out of the snapshot.
+        </p>
+      </div>
+
+      <h3 id="indexes">Indexes</h3>
+
+      <div class="prose">
+        <p>
+          All declared in one file, <code>MongoIndexConfig</code>, created at startup from
+          <code>@PostConstruct</code>. Not with <code>@Indexed</code> annotations: auto-index-creation
+          is off, because an annotation that silently triggers an index build against a live
+          collection is a production incident that starts as a one-line diff.
+        </p>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Collection</th>
+              <th>Index</th>
+              <th>Serves</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="m nowrap">reels</td>
+              <td class="m nowrap">{ status: 1, publishedAt: -1 }</td>
+              <td>The public feed — the hot path</td>
+            </tr>
+            <tr>
+              <td class="m nowrap">reels</td>
+              <td class="m nowrap">{ "creator.id": 1, status: 1, publishedAt: -1 }</td>
+              <td>A creator's own reels</td>
+            </tr>
+            <tr>
+              <td class="m nowrap">reels</td>
+              <td class="m nowrap">{ slug: 1 } <em>unique</em></td>
+              <td>Permalinks, and the slug-collision guard</td>
+            </tr>
+            <tr>
+              <td class="m nowrap">reels</td>
+              <td class="m nowrap">{ tags: 1, publishedAt: -1 }</td>
+              <td>Multikey — browse by tag</td>
+            </tr>
+            <tr>
+              <td class="m nowrap">reels</td>
+              <td class="m nowrap">text: title&nbsp;10, tags&nbsp;8, description&nbsp;5</td>
+              <td>Search. Weights decide ranking across fields</td>
+            </tr>
+            <tr>
+              <td class="m nowrap">comments</td>
+              <td class="m nowrap">{ reelId: 1, createdAt: -1 }</td>
+              <td>A reel's thread</td>
+            </tr>
+            <tr>
+              <td class="m nowrap">creators</td>
+              <td class="m nowrap">{ username: 1 } <em>unique</em></td>
+              <td>Profile permalink</td>
+            </tr>
+            <tr>
+              <td class="m nowrap">users</td>
+              <td class="m nowrap">{ email: 1 } <em>unique</em></td>
+              <td>Login</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="prose">
+        <p>
+          Field order in every compound index follows <strong>ESR</strong> — Equality, then Sort,
+          then Range. Get it backwards and MongoDB can still use the index, but it sorts the results
+          in memory afterwards, which is capped at 32&nbsp;MB and fails outright on a large result
+          set. Verify with <code>.explain()</code>: you want an <code>IXSCAN</code> with no
+          <code>SORT</code> stage above it.
+        </p>
+      </div>
+
+      <div class="note trap">
+        <span class="note-label">One text index per collection</span>
+        <p>
+          A collection may have <strong>at most one</strong> text index. It can cover many fields, as
+          this one does — but you cannot add a second later for a different field set. The create
+          fails with <code>IndexOptionsConflict</code>.
+        </p>
+      </div>
+    </section>
+
+    <!-- ============================================ BACKEND -->
+    <section id="backend">
+      <h2>Backend</h2>
+
+      <div class="prose">
+        <p>
+          Layered the same way as the <code>pizza</code> demo, so the two can be read side by side.
+          <strong>One package per document, everything for it together</strong> — entity, repository,
+          DAO, service and controllers all live in the same folder.
+        </p>
+      </div>
+
+      <div class="tree"><span class="dir">com.reelcms.api</span>
+├── <span class="dir">config/</span>      SecurityConfig · MongoConfig · MongoIndexConfig
+│               WebMvcConfig · OpenApiConfig · Timestamps
+├── <span class="dir">dto/</span>         Dtos (every record, one file) + EntityDtoMapper
+├── <span class="dir">entity/</span>
+│   ├── <span class="dir">reel/</span>           Reel · VideoAsset · CreatorRef · ReelStats
+│   │                 ReelRepository · ReelDAO/Imp · ReelService/Impl
+│   │                 ReelRestController · AdminReelRestController · SlugService
+│   ├── <span class="dir">creator/</span>        Creator · CreatorService/Impl · AvatarFactory
+│   ├── <span class="dir">comment/</span>        Comment · CommentService/Impl
+│   ├── <span class="dir">reelcollection/</span> ReelCollection · CoverFactory
+│   ├── <span class="dir">viewevent/</span>      ViewEvent <span class="note-i">(time-series)</span> · ViewEventService
+│   └── <span class="dir">user/</span>           User · AuthService · AuthRestController
+├── <span class="dir">exception/</span>   ApiError · ApiException · RestExceptionHandler
+├── <span class="dir">report/</span>      ReportDAO/Imp <span class="note-i">— the aggregation pipelines</span>
+├── <span class="dir">security/</span>    JwtService · JwtAuthenticationFilter · AuthPrincipal
+├── <span class="dir">storage/</span>     MediaStorageService <span class="note-i">— the only filesystem-aware class</span>
+├── <span class="dir">stream/</span>      ReelStatsStreamService <span class="note-i">— change stream → SSE</span>
+└── <span class="dir">seed/</span>        DataSeeder</div>
+
+      <h3>The DAO rule</h3>
+
+      <div class="prose">
+        <p>
+          Every DAO is an interface plus an implementation, and the implementation reaches for a
+          Spring Data repository <em>or</em> <code>MongoTemplate</code> — whichever each method
+          needs. This is the same split <code>pizza</code> keeps between a repository and
+          <code>JdbcTemplate</code>.
+        </p>
+      </div>
+
+      <div class="cards">
+        <div class="card">
+          <h4>Repository</h4>
+          <p>
+            Anything Spring Data can derive from a method name — <code>findBySlug</code>,
+            <code>existsBySlug</code>, <code>findByStatusOrderByPublishedAtDesc</code>.
+          </p>
+        </div>
+        <div class="card">
+          <h4>MongoTemplate</h4>
+          <p>
+            Dynamic filters, <code>$text</code> search, aggregation pipelines, and every partial
+            update.
+          </p>
+        </div>
+        <div class="card">
+          <h4>Never <code>save()</code> a counter</h4>
+          <p>
+            A counter change is always <code>$inc</code>. Load-mutate-save loses increments under
+            concurrency and rewrites the whole document.
+          </p>
+        </div>
+      </div>
+
+      <h3>Two deliberate departures from <code>pizza</code></h3>
+
+      <div class="prose">
+        <ul>
+          <li>
+            <strong>No MapStruct.</strong> <code>EntityDtoMapper</code> is hand-written. The
+            interesting question here is which document fields reach the wire —
+            <code>User.passwordHash</code> being the one that matters — and a generated mapper hides
+            exactly that.
+          </li>
+          <li>
+            <strong>No Liquibase.</strong> There is no schema to migrate.
+            <code>MongoIndexConfig</code> takes its place, and is the file to read to understand the
+            query strategy.
+          </li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- ============================================ FRONTEND -->
+    <section id="frontend">
+      <h2>Frontend</h2>
+
+      <div class="prose">
+        <p>
+          One Vue app serves both surfaces, split by layout rather than by build: <code>/</code> is
+          public, <code>/admin</code> sits behind a router guard. A single app is less scaffolding to
+          hold in your head, and the guard itself is a useful snippet.
+        </p>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Route</th><th>View</th><th>What it does</th></tr>
+          </thead>
+          <tbody>
+            <tr><td class="m nowrap">/</td><td class="m">FeedView</td><td>Vertical scroll-snap pager, cursor-paginated</td></tr>
+            <tr><td class="m nowrap">/explore</td><td class="m">ExploreView</td><td>Text search + tag filter; state lives in the URL</td></tr>
+            <tr><td class="m nowrap">/r/:slug</td><td class="m">ReelView</td><td>Permalink, stats and comment thread</td></tr>
+            <tr><td class="m nowrap">/u/:username</td><td class="m">CreatorView</td><td>Creator profile and their published reels</td></tr>
+            <tr><td class="m nowrap">/c · /c/:slug</td><td class="m">Collections…</td><td>Curated sets</td></tr>
+            <tr><td class="m nowrap">/admin</td><td class="m">DashboardView</td><td>Aggregation charts + live change-stream panel</td></tr>
+            <tr><td class="m nowrap">/admin/reels</td><td class="m">ReelListView</td><td>Filter, publish, delete</td></tr>
+            <tr><td class="m nowrap">/admin/reels/:id</td><td class="m">ReelEditView</td><td>Editor, tags, media upload</td></tr>
+            <tr><td class="m nowrap">/admin/collections</td><td class="m">CollectionListView</td><td>CRUD</td></tr>
+            <tr><td class="m nowrap">/admin/creators</td><td class="m">CreatorListView</td><td>CRUD — <span class="lock">ADMIN only</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>The one place the app talks to a backend</h3>
+
+      <div class="prose">
+        <p>
+          Every component imports <code>api</code> from <code>src/api/index.js</code>. Nothing
+          imports <code>mock.js</code> or <code>http.js</code> directly — which is what keeps
+          switching data sources a one-line change instead of a hunt through thirty components.
+        </p>
+      </div>
+
+<pre><code><span class="cmt">// src/api/index.js</span>
+<span class="kw">import</span> { mockApi } <span class="kw">from</span> <span class="kw">"./mock"</span>;
+<span class="kw">import</span> { httpApi } <span class="kw">from</span> <span class="kw">"./http"</span>;
+
+<span class="kw">export const</span> usingMock = import.meta.env.VITE_USE_MOCK !== <span class="kw">"false"</span>;
+<span class="kw">export const</span> api = usingMock ? mockApi : httpApi;</code></pre>
+
+      <div class="prose">
+        <p>
+          The whole UI was built against <code>mock.js</code> before the backend existed, which is
+          why the mock defines the contract rather than imitating it. The two modules must stay
+          method-for-method identical. A badge in the admin header always shows which one is live —
+          getting that wrong is the most confusing state to debug.
+        </p>
+      </div>
+    </section>
+
+    <!-- ============================================ FLOWS -->
+    <section id="flows">
+      <h2>Key flows</h2>
+
+      <h3 id="paging">Feed pagination — cursor, not <code>skip</code></h3>
+
+      <div class="prose">
+        <p>
+          The feed pages by cursor. In an infinite scroll this is not a micro-optimisation; it is the
+          difference between a feed that stays fast and one that degrades the longer someone reads.
+        </p>
+      </div>
+
+      <figure>
+        <svg viewBox="0 0 880 300" role="img"
+             aria-label="Comparison of skip-based and cursor-based pagination. Skip walks and discards every index entry before the offset, so cost grows with depth. A cursor seeks directly to the last seen publishedAt value, so cost is constant.">
+          <defs>
+            <marker id="pr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M0 0 L10 5 L0 10 z" fill="currentColor"/>
+            </marker>
+            <marker id="pr-a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M0 0 L10 5 L0 10 z" fill="var(--accent)"/>
+            </marker>
+          </defs>
+
+          <!-- ---------- skip ---------- -->
+          <text x="20" y="34" font-family="IBM Plex Mono, monospace" font-size="12" font-weight="600" fill="var(--warn)">skip(4000).limit(4)</text>
+          <text x="20" y="52" font-family="IBM Plex Mono, monospace" font-size="10.5" fill="var(--faint)">cost grows with depth</text>
+
+          <!-- index track -->
+          <rect x="20" y="70" width="700" height="30" rx="5" fill="var(--surface-2)" stroke="var(--line-strong)" stroke-width="1.2"/>
+          <rect x="20" y="70" width="620" height="30" rx="5" fill="var(--warn-soft)"/>
+          <g stroke="var(--line-strong)" stroke-width="1">
+            <line x1="80"  y1="70" x2="80"  y2="100"/><line x1="140" y1="70" x2="140" y2="100"/>
+            <line x1="200" y1="70" x2="200" y2="100"/><line x1="260" y1="70" x2="260" y2="100"/>
+            <line x1="320" y1="70" x2="320" y2="100"/><line x1="380" y1="70" x2="380" y2="100"/>
+            <line x1="440" y1="70" x2="440" y2="100"/><line x1="500" y1="70" x2="500" y2="100"/>
+            <line x1="560" y1="70" x2="560" y2="100"/><line x1="620" y1="70" x2="620" y2="100"/>
+            <line x1="680" y1="70" x2="680" y2="100"/>
+          </g>
+          <rect x="640" y="70" width="80" height="30" rx="5" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="1.4"/>
+          <text x="330" y="90" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--warn)" text-anchor="middle">4000 entries walked, then discarded</text>
+          <text x="680" y="90" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--accent)" text-anchor="middle">kept</text>
+          <line x1="20" y1="118" x2="634" y2="118" stroke="var(--warn)" stroke-width="1.4" marker-end="url(#pr)" color="var(--warn)"/>
+          <text x="740" y="90" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--muted)">O(offset)</text>
+
+          <!-- ---------- cursor ---------- -->
+          <text x="20" y="186" font-family="IBM Plex Mono, monospace" font-size="12" font-weight="600" fill="var(--ref)">publishedAt &lt; lastSeen</text>
+          <text x="20" y="204" font-family="IBM Plex Mono, monospace" font-size="10.5" fill="var(--faint)">cost is constant at any depth</text>
+
+          <rect x="20" y="222" width="700" height="30" rx="5" fill="var(--surface-2)" stroke="var(--line-strong)" stroke-width="1.2"/>
+          <g stroke="var(--line-strong)" stroke-width="1">
+            <line x1="80"  y1="222" x2="80"  y2="252"/><line x1="140" y1="222" x2="140" y2="252"/>
+            <line x1="200" y1="222" x2="200" y2="252"/><line x1="260" y1="222" x2="260" y2="252"/>
+            <line x1="320" y1="222" x2="320" y2="252"/><line x1="380" y1="222" x2="380" y2="252"/>
+            <line x1="440" y1="222" x2="440" y2="252"/><line x1="500" y1="222" x2="500" y2="252"/>
+            <line x1="560" y1="222" x2="560" y2="252"/><line x1="620" y1="222" x2="620" y2="252"/>
+            <line x1="680" y1="222" x2="680" y2="252"/>
+          </g>
+          <rect x="640" y="222" width="80" height="30" rx="5" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="1.4"/>
+          <text x="680" y="242" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--accent)" text-anchor="middle">kept</text>
+          <path d="M60 282 L60 264 L634 264" stroke="var(--ref)" stroke-width="1.6" fill="none" marker-end="url(#pr)" color="var(--ref)"/>
+          <text x="330" y="282" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--ref)" text-anchor="middle">index seek — straight to the entry</text>
+          <text x="740" y="242" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--muted)">O(1)</text>
+        </svg>
+        <figcaption>
+          Both queries use the same <code>{status, publishedAt}</code> index. The difference is
+          where they enter it: <code>skip</code> starts at the beginning and counts, a cursor seeks
+          to the last value the client saw.
+        </figcaption>
+      </figure>
+
+      <div class="prose">
+        <p>
+          The client sends back the id of the last reel it received;
+          <code>ReelServiceImpl.feed()</code> resolves it to a <code>publishedAt</code> and seeks
+          from there. A full page implies there is probably more; a short page proves there is not.
+          The worst case is one extra request that returns nothing — far cheaper than counting the
+          whole collection on every load just to be exact.
+        </p>
+      </div>
+
+      <h3 id="views">Recording a view</h3>
+
+      <div class="prose">
+        <p>
+          One user action, two writes, and the dashboard update comes free. The split between the
+          event log and the counter is the design, not an accident.
+        </p>
+      </div>
+
+      <figure>
+        <svg viewBox="0 0 900 330" role="img"
+             aria-label="Recording a view performs two writes: an append to the view_events time-series collection, and an atomic increment of the reel's embedded stats counter. The increment reaches MongoDB's oplog, which a change stream tails and forwards to the dashboard over server-sent events.">
+          <defs>
+            <marker id="vr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M0 0 L10 5 L0 10 z" fill="currentColor"/>
+            </marker>
+          </defs>
+
+          <!-- request -->
+          <rect x="16" y="120" width="150" height="58" rx="8" fill="var(--surface-2)" stroke="var(--line-strong)" stroke-width="1.5"/>
+          <text x="91" y="145" font-family="IBM Plex Mono, monospace" font-size="11" font-weight="600" fill="currentColor" text-anchor="middle">POST</text>
+          <text x="91" y="163" font-family="IBM Plex Mono, monospace" font-size="10" fill="var(--muted)" text-anchor="middle">/reels/{id}/views</text>
+
+          <!-- service -->
+          <rect x="226" y="120" width="150" height="58" rx="8" fill="var(--surface-2)" stroke="var(--line-strong)" stroke-width="1.5"/>
+          <text x="301" y="153" font-family="IBM Plex Mono, monospace" font-size="11" font-weight="600" fill="currentColor" text-anchor="middle">ViewEventService</text>
+
+          <line x1="166" y1="149" x2="220" y2="149" stroke="currentColor" stroke-width="1.5" marker-end="url(#vr)"/>
+
+          <!-- write A: time series -->
+          <rect x="470" y="34" width="200" height="66" rx="8" fill="var(--embed-soft)" stroke="var(--embed)" stroke-width="1.5"/>
+          <text x="570" y="58" font-family="IBM Plex Mono, monospace" font-size="11" font-weight="600" fill="var(--embed)" text-anchor="middle">view_events</text>
+          <text x="570" y="76" font-family="IBM Plex Mono, monospace" font-size="10" fill="var(--muted)" text-anchor="middle">time-series append</text>
+          <text x="570" y="92" font-family="IBM Plex Mono, monospace" font-size="9.5" fill="var(--faint)" text-anchor="middle">the durable fact · TTL 90d</text>
+          <path d="M376 138 L423 138 L423 67 L464 67" stroke="var(--embed)" stroke-width="1.5" fill="none" marker-end="url(#vr)" color="var(--embed)"/>
+          <text x="423" y="118" font-family="IBM Plex Mono, monospace" font-size="10" fill="var(--embed)" text-anchor="middle">insert</text>
+
+          <!-- write B: counter -->
+          <rect x="470" y="196" width="200" height="66" rx="8" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="1.5"/>
+          <text x="570" y="220" font-family="IBM Plex Mono, monospace" font-size="11" font-weight="600" fill="var(--accent)" text-anchor="middle">reels.stats.views</text>
+          <text x="570" y="238" font-family="IBM Plex Mono, monospace" font-size="10" fill="var(--muted)" text-anchor="middle">$inc — atomic, no txn</text>
+          <text x="570" y="254" font-family="IBM Plex Mono, monospace" font-size="9.5" fill="var(--faint)" text-anchor="middle">the read model</text>
+          <path d="M376 160 L423 160 L423 229 L464 229" stroke="var(--accent)" stroke-width="1.5" fill="none" marker-end="url(#vr)" color="var(--accent)"/>
+          <text x="423" y="188" font-family="IBM Plex Mono, monospace" font-size="10" fill="var(--accent)" text-anchor="middle">$inc</text>
+
+          <!-- oplog -> dashboard -->
+          <path d="M670 229 L730 229 L730 300 L300 300" stroke="var(--ref)" stroke-width="1.5" fill="none" stroke-dasharray="5 4" marker-end="url(#vr)" color="var(--ref)"/>
+          <text x="515" y="292" font-family="IBM Plex Mono, monospace" font-size="10" fill="var(--ref)" text-anchor="middle">oplog → change stream → SSE</text>
+          <rect x="150" y="278" width="150" height="44" rx="8" fill="var(--ref-soft)" stroke="var(--ref)" stroke-width="1.5"/>
+          <text x="225" y="305" font-family="IBM Plex Mono, monospace" font-size="11" font-weight="600" fill="var(--ref)" text-anchor="middle">Dashboard tick</text>
+
+          <text x="700" y="140" font-family="IBM Plex Mono, monospace" font-size="10" fill="var(--faint)">aggregated by</text>
+          <text x="700" y="156" font-family="IBM Plex Mono, monospace" font-size="10" fill="var(--faint)">the reports</text>
+          <path d="M690 120 L690 175" stroke="var(--line-strong)" stroke-width="1" stroke-dasharray="3 3"/>
+        </svg>
+        <figcaption>
+          Counting 30 million events on every feed render is not viable, so the events stay for
+          analytics and the counter becomes the read model. The live dashboard tick is a side effect
+          of the <code>$inc</code> — no extra publish, no message bus.
+        </figcaption>
+      </figure>
+
+      <div class="prose">
+        <p>
+          The two can drift, and that is accepted: a view count is a vanity number, not a ledger. If
+          it had to be exact you would rebuild it from the events on a schedule rather than pay for a
+          transaction on the hot path — which is exactly what <code>DataSeeder.reconcileStats()</code>
+          does at seed time.
+        </p>
+      </div>
+
+      <h3 id="reports">The dashboard</h3>
+
+      <div class="prose">
+        <p>
+          Every figure comes from a pipeline over real data. No hard-coded numbers anywhere — the
+          same rule <code>pizza</code>'s reports follow.
+        </p>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Panel</th><th>Pipeline</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Views over time</td><td class="m">$match ts → $lookup reels → $group by $dateTrunc day → $sort</td></tr>
+            <tr><td>Top reels</td><td class="m">$group by reelId → $sort → $limit → $lookup → $unwind</td></tr>
+            <tr><td>Engagement by tag</td><td class="m">$match published → $unwind tags → $group → $sort</td></tr>
+            <tr><td>Completion rate</td><td class="m">$lookup for duration → $group with $avg of $min(1, watch / duration)</td></tr>
+            <tr><td>Trending tags</td><td class="m">$unwind → $group → $sort → $limit</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="prose">
+        <p>
+          Stage order is deliberate. The <code>$match</code> on <code>ts</code> comes first so the
+          time-series collection can skip whole buckets, and only surviving events are joined. In
+          <em>Top reels</em>, the big collection is aggregated down to ten rows <em>before</em> the
+          <code>$lookup</code> — putting the join first would join every event ever recorded and then
+          throw most of it away.
+        </p>
+        <p>
+          Stages the fluent builder handles well use it; the rest use
+          <code>Aggregation.stage(json)</code>, which is copy-pasteable straight into
+          <code>mongosh</code> — and unlike nested <code>new Document(...)</code> calls, does not
+          reject nulls in surprising places.
+        </p>
+      </div>
+    </section>
+
+    <!-- ============================================ API -->
+    <section id="api">
+      <h2>API reference</h2>
+
+      <div class="prose">
+        <p>
+          Base URL <code>http://localhost:8087</code>. Interactive docs at
+          <code>/swagger-ui.html</code>.
+        </p>
+      </div>
+
+      <h3>Public — no authentication</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Method</th><th>Path</th><th>Does</th></tr></thead>
+          <tbody>
+            <tr><td class="nowrap"><span class="method get">GET</span></td><td class="m nowrap">/api/feed</td><td>Cursor-paginated published reels</td></tr>
+            <tr><td class="nowrap"><span class="method get">GET</span></td><td class="m nowrap">/api/reels</td><td>Full-text search + tag filter</td></tr>
+            <tr><td class="nowrap"><span class="method get">GET</span></td><td class="m nowrap">/api/reels/{slug}</td><td>One reel — 404 unless PUBLISHED</td></tr>
+            <tr><td class="nowrap"><span class="method get">GET</span></td><td class="m nowrap">/api/reels/{id}/comments</td><td>The thread, newest first</td></tr>
+            <tr><td class="nowrap"><span class="method post">POST</span></td><td class="m nowrap">/api/reels/{id}/comments</td><td>Post a comment</td></tr>
+            <tr><td class="nowrap"><span class="method post">POST</span></td><td class="m nowrap">/api/reels/{id}/like</td><td>Like or unlike</td></tr>
+            <tr><td class="nowrap"><span class="method post">POST</span></td><td class="m nowrap">/api/reels/{id}/views</td><td>Record a playback</td></tr>
+            <tr><td class="nowrap"><span class="method get">GET</span></td><td class="m nowrap">/api/creators/{username}</td><td>Profile + published reels</td></tr>
+            <tr><td class="nowrap"><span class="method get">GET</span></td><td class="m nowrap">/api/collections</td><td>All collections</td></tr>
+            <tr><td class="nowrap"><span class="method get">GET</span></td><td class="m nowrap">/api/collections/{slug}</td><td>One collection + its reels</td></tr>
+            <tr><td class="nowrap"><span class="method get">GET</span></td><td class="m nowrap">/api/tags/trending</td><td>Most-viewed tags</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Studio — bearer token required</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Method</th><th>Path</th><th>Does</th><th>Role</th></tr></thead>
+          <tbody>
+            <tr><td class="nowrap"><span class="method post">POST</span></td><td class="m nowrap">/api/auth/login</td><td>Email + password → JWT</td><td class="lock">public</td></tr>
+            <tr><td class="nowrap"><span class="method get">GET</span></td><td class="m nowrap">/api/auth/me</td><td>Who the token belongs to</td><td class="lock">any</td></tr>
+            <tr><td class="nowrap"><span class="method get">GET</span></td><td class="m nowrap">/api/admin/reels</td><td>Filtered, paged list of every reel</td><td class="lock">admin · creator</td></tr>
+            <tr><td class="nowrap"><span class="method get">GET</span></td><td class="m nowrap">/api/admin/reels/{id}</td><td>One reel, whatever its status</td><td class="lock">admin · creator</td></tr>
+            <tr><td class="nowrap"><span class="method post">POST</span></td><td class="m nowrap">/api/admin/reels</td><td>Create</td><td class="lock">admin · creator</td></tr>
+            <tr><td class="nowrap"><span class="method put">PUT</span></td><td class="m nowrap">/api/admin/reels/{id}</td><td>Update</td><td class="lock">owner · admin</td></tr>
+            <tr><td class="nowrap"><span class="method patch">PATCH</span></td><td class="m nowrap">/api/admin/reels/{id}/status</td><td>Publish · unpublish · archive</td><td class="lock">owner · admin</td></tr>
+            <tr><td class="nowrap"><span class="method del">DELETE</span></td><td class="m nowrap">/api/admin/reels/{id}</td><td>Delete + cascade comments</td><td class="lock">owner · admin</td></tr>
+            <tr><td class="nowrap"><span class="method post">POST</span></td><td class="m nowrap">/api/admin/uploads/video</td><td>Upload an MP4/WebM/MOV, max 100 MB</td><td class="lock">admin · creator</td></tr>
+            <tr><td class="nowrap"><span class="method post">POST</span></td><td class="m nowrap">/api/admin/uploads/poster</td><td>Upload a JPEG/PNG/WebP</td><td class="lock">admin · creator</td></tr>
+            <tr><td class="nowrap"><span class="method get">GET</span></td><td class="m nowrap">/api/admin/collections</td><td>List</td><td class="lock">admin · creator</td></tr>
+            <tr><td class="nowrap"><span class="method post">POST</span></td><td class="m nowrap">/api/admin/collections</td><td>Create</td><td class="lock">admin · creator</td></tr>
+            <tr><td class="nowrap"><span class="method put">PUT</span></td><td class="m nowrap">/api/admin/collections/{id}</td><td>Update</td><td class="lock">admin · creator</td></tr>
+            <tr><td class="nowrap"><span class="method del">DELETE</span></td><td class="m nowrap">/api/admin/collections/{id}</td><td>Delete + unlink reels</td><td class="lock">admin · creator</td></tr>
+            <tr><td class="nowrap"><span class="method get">GET</span></td><td class="m nowrap">/api/admin/creators</td><td>List with reel counts</td><td class="lock">admin</td></tr>
+            <tr><td class="nowrap"><span class="method post">POST</span></td><td class="m nowrap">/api/admin/creators</td><td>Create</td><td class="lock">admin</td></tr>
+            <tr><td class="nowrap"><span class="method put">PUT</span></td><td class="m nowrap">/api/admin/creators/{id}</td><td>Update — <strong>fans the snapshot out</strong></td><td class="lock">admin</td></tr>
+            <tr><td class="nowrap"><span class="method get">GET</span></td><td class="m nowrap">/api/admin/reports</td><td>Every dashboard figure</td><td class="lock">admin · creator</td></tr>
+            <tr><td class="nowrap"><span class="method get">GET</span></td><td class="m nowrap">/api/admin/stream/stats</td><td>Live stats over SSE</td><td class="lock">admin · creator</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="prose">
+        <p>
+          Errors always come back in one shape, so the frontend can render any failure without
+          special-casing it:
+        </p>
+      </div>
+
+<pre><code>{
+  <span class="kw">"status"</span>: 400,
+  <span class="kw">"error"</span>: <span class="kw">"Bad Request"</span>,
+  <span class="kw">"message"</span>: <span class="kw">"Validation failed"</span>,
+  <span class="kw">"subErrors"</span>: [
+    { <span class="kw">"field"</span>: <span class="kw">"title"</span>, <span class="kw">"rejectedValue"</span>: <span class="kw">""</span>, <span class="kw">"message"</span>: <span class="kw">"must not be blank"</span> }
+  ],
+  <span class="kw">"timestamp"</span>: <span class="kw">"2026-08-24T18:53:07.048Z"</span>
+}</code></pre>
+
+      <div class="prose">
+        <p>
+          <code>src/api/http.js</code> reads <code>message</code> and <code>subErrors</code> by name,
+          so renaming either silently degrades every error in the UI to
+          <em>"Request failed (400)"</em>.
+        </p>
+      </div>
+    </section>
+
+    <!-- ============================================ AUTH -->
+    <section id="auth">
+      <h2>Auth &amp; roles</h2>
+
+      <div class="prose">
+        <p>
+          Stateless JWT, 12-hour expiry, HS256. <code>JwtAuthenticationFilter</code> reads the bearer
+          token, builds an <code>AuthPrincipal</code> from its claims, and puts it in the security
+          context — so an authorization decision never needs a database round trip.
+        </p>
+      </div>
+
+      <div class="cards">
+        <div class="card">
+          <h4>ADMIN</h4>
+          <p>Everything. The only role that may manage creators or reassign a reel to a different one.</p>
+        </div>
+        <div class="card">
+          <h4>CREATOR</h4>
+          <p>Manages only reels whose <code>creator.id</code> matches their own <code>creatorId</code>. Enforced server-side; the UI just avoids offering buttons that would 403.</p>
+        </div>
+        <div class="card">
+          <h4>Anonymous</h4>
+          <p>The whole public surface, including posting comments, liking and recording views.</p>
+        </div>
+      </div>
+
+      <div class="note">
+        <span class="note-label">Two things that look like bugs but are not</span>
+        <p>
+          <strong>CSRF is disabled</strong> — correctly. CSRF protection defends a cookie-authenticated
+          session, because the browser attaches cookies automatically. A bearer token has to be added
+          by script, so it is itself the defence. This would <em>not</em> be true if the API used a
+          session cookie.
+        </p>
+        <p>
+          <strong>The SSE endpoint takes its token in the query string.</strong> <code>EventSource</code>
+          cannot set request headers — a browser API limitation, not an oversight. It is scoped to
+          that one path deliberately, since a token in a URL ends up in access logs.
+        </p>
+      </div>
+
+      <div class="prose">
+        <p>
+          The token is kept in <code>localStorage</code>, which is a demo choice and the wrong one
+          for production: any XSS on the page can read it. A real deployment puts it in an
+          <code>httpOnly SameSite</code> cookie. It lives in <code>src/api/session.js</code>, a leaf
+          module that exists so the HTTP client and the Pinia auth store can share it without
+          importing each other.
+        </p>
+      </div>
+    </section>
+
+    <!-- ============================================ RUNNING -->
+    <section id="running">
+      <h2>Running it</h2>
+
+      <div class="prose">
+        <p>Three terminals. Start the database first — the API seeds itself on first boot.</p>
+      </div>
+
+<pre><code><span class="cmt"># 1. MongoDB on 27018   (--profile tools adds mongo-express on 8091)</span>
+docker compose up -d
+
+<span class="cmt"># 2. API on 8087        (Swagger UI at /swagger-ui.html)</span>
+cd reelcms-springboot-backend &amp;&amp; ./mvnw spring-boot:run
+
+<span class="cmt"># 3. Site on 5176</span>
+cd reelcms-vue-frontend &amp;&amp; npm install &amp;&amp; npm run dev</code></pre>
+
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Service</th><th>Port</th><th>Why that port</th></tr></thead>
+          <tbody>
+            <tr><td class="m">MongoDB</td><td class="m num">27018</td><td><code>pizza</code> uses MySQL on 3308</td></tr>
+            <tr><td class="m">mongo-express</td><td class="m num">8091</td><td>Optional</td></tr>
+            <tr><td class="m">API</td><td class="m num">8087</td><td><code>pizza</code> uses 8085</td></tr>
+            <tr><td class="m">Vue dev server</td><td class="m num">5176</td><td>5173–5175 are taken by <code>pizza</code> and <code>stayhub</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="prose">
+        <p>
+          Demo logins: <code>admin@reelcms.test</code> / <code>admin123</code> and
+          <code>creator@reelcms.test</code> / <code>creator123</code>. The seed creates 5 creators,
+          4 collections, 16 reels and roughly 30,000 view events. Start over with
+          <code>docker compose down -v</code>.
+        </p>
+        <p>
+          The seeded reels ship with poster images but <strong>no video files</strong>, so they
+          render their poster rather than playing. Upload a real video through the editor and it
+          plays — the upload path is fully wired.
+        </p>
+      </div>
+
+      <h3>Tests</h3>
+
+<pre><code><span class="cmt"># backend — 66 tests. Needs MongoDB; uses a throwaway reelcms_test database.</span>
+cd reelcms-springboot-backend
+./mvnw test
+./mvnw spotless:apply          <span class="cmt"># before committing any Java</span>
+
+<span class="cmt"># end-to-end — 25 tests. Needs all three services running.</span>
+cd reelcms-vue-frontend
+npm run test:e2e               <span class="cmt"># everything</span>
+npm run test:public            <span class="cmt"># public site only</span>
+npm run test:admin             <span class="cmt"># studio only</span>
+npm run screenshots            <span class="cmt"># regenerate screenshots/, fails on any console error</span></code></pre>
+
+      <div class="prose">
+        <p>
+          Nothing is stubbed in either suite, and there is no embedded MongoDB. Almost everything
+          worth testing here is behaviour of the actual server — <code>$inc</code> atomicity,
+          <code>$lookup</code> type matching, text-index ranking, time-series inserts, change streams.
+          A fake would either not implement them or implement them differently.
+        </p>
+      </div>
+    </section>
+
+    <!-- ============================================ TRAPS -->
+    <section id="traps">
+      <h2>Traps</h2>
+
+      <div class="prose">
+        <p>
+          Every one of these was hit while building the app, and each is commented at the place it
+          bites. They share a family resemblance: <strong>nothing throws</strong>. The failure mode is
+          silence.
+        </p>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Symptom</th><th>Cause</th></tr></thead>
+          <tbody>
+            <tr>
+              <td>Connection refused on <strong>27017</strong> — a port in no config file</td>
+              <td>Spring Boot 4 renamed <code>spring.data.mongodb.uri</code> → <code>spring.mongodb.uri</code>. The old key is ignored silently and the driver falls back to its default.</td>
+            </tr>
+            <tr>
+              <td>Integration tests <strong>deleted the demo data</strong></td>
+              <td><code>spring.mongodb.database</code> was set alongside a URI that already named one. The standalone property wins, so the test's URI override did nothing.</td>
+            </tr>
+            <tr>
+              <td>Three reports returned <strong>empty arrays</strong>, no error</td>
+              <td><code>$lookup</code> compares types strictly. A <code>String reelId</code> is a BSON string; the <code>_id</code> it points at is an ObjectId. Fixed with <code>@Field(targetType = OBJECT_ID)</code>.</td>
+            </tr>
+            <tr>
+              <td>Change stream <strong>opened cleanly and delivered nothing</strong></td>
+              <td><code>filter(Aggregation)</code> is field-mapped against the domain type, and <code>operationType</code> is a change-event field, not a <code>Reel</code> field. Use <code>filter(Document...)</code>.</td>
+            </tr>
+            <tr>
+              <td>Change-stream event bodies were all <code>null</code></td>
+              <td>An update event carries only the changed fields unless you ask for <code>fullDocument: updateLookup</code>.</td>
+            </tr>
+            <tr>
+              <td><code>view_events</code> created as an <strong>ordinary collection</strong></td>
+              <td><code>DataSeeder</code> is an <code>ApplicationRunner</code>, which fires <em>before</em> <code>ApplicationReadyEvent</code>. Index setup moved to <code>@PostConstruct</code>. A collection cannot be converted to time-series after the fact.</td>
+            </tr>
+            <tr>
+              <td>A timestamp changed between the POST response and a later GET</td>
+              <td>BSON keeps milliseconds; <code>Instant.now()</code> has microseconds. Everything routes through <code>Timestamps.now()</code>.</td>
+            </tr>
+            <tr>
+              <td>Driver hung with a <code>ServerSelectionTimeout</code> that never mentioned ports</td>
+              <td>A replica set hands back its member list and the driver reconnects to <em>that</em> address. The advertised <code>host:port</code> must be reachable under that exact spelling — hence publishing 27018&nbsp;→&nbsp;27018.</td>
+            </tr>
+            <tr>
+              <td>Login form said <em>"your session expired"</em> on a wrong password</td>
+              <td>A 401 was treated as expiry regardless of whether a token had been sent. With a token it is an expired session; without one it is a failed login.</td>
+            </tr>
+            <tr>
+              <td>Both "Dashboard" and "Reels" highlighted at once</td>
+              <td>Vue Router marks a link to an index child active whenever <em>any</em> sibling is.</td>
+            </tr>
+            <tr>
+              <td>A broken poster stretched a table row to 200px</td>
+              <td><code>"4th &amp; Inches"</code> — a raw ampersand makes an inline SVG malformed, so the browser fell back to alt text.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="note">
+        <span class="note-label">The habit these teach</span>
+        <p>
+          MongoDB is permissive by design: it will accept a string where you meant an ObjectId, create
+          a collection you did not configure, and run a pipeline that matches nothing — all without
+          complaint. When a query returns an empty array, check the <em>types</em> before you check
+          the logic.
+        </p>
+      </div>
+    </section>
+
+  </main>
+
+  <footer class="end">
+    <span>ReelCMS — a MongoDB demo for lovemesomecoding.com</span>
+    <span class="mono">progress_report.md holds the state · CLAUDE.md holds the rules</span>
+  </footer>
+
+</div>
