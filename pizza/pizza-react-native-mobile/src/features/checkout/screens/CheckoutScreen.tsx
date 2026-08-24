@@ -195,12 +195,7 @@ export function CheckoutScreen() {
   if (created) {
     return (
       <Screen testID="checkout-payment-step">
-        <OrderSummary
-          items={items}
-          orderType={orderType}
-          totals={totals}
-          order={created.order}
-        />
+        <OrderSummary items={items} orderType={orderType} totals={totals} order={created.order} />
 
         <Card style={styles.card}>
           <Text variant="label" tone="muted">

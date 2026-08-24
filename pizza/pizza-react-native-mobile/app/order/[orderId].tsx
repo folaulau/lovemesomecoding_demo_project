@@ -15,7 +15,11 @@ export default function OrderRoute() {
   if (!orderId) {
     return (
       <Screen>
-        <EmptyState emoji="🧾" title="Order not found" message="That link is missing an order id." />
+        <EmptyState
+          emoji="🧾"
+          title="Order not found"
+          message="That link is missing an order id."
+        />
       </Screen>
     );
   }

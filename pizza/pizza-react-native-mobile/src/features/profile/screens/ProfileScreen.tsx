@@ -153,7 +153,11 @@ export function ProfileScreen() {
         </View>
 
         {addresses.length === 0 ? (
-          <EmptyState emoji="📍" title="No saved addresses" message="Add one to speed up checkout." />
+          <EmptyState
+            emoji="📍"
+            title="No saved addresses"
+            message="Add one to speed up checkout."
+          />
         ) : (
           addresses.map((address, index) => (
             <View key={address.id}>

@@ -29,7 +29,11 @@ export function QuantityStepper({
         disabled={quantity <= min}
         accessibilityRole="button"
         accessibilityLabel={`Decrease quantity of ${itemName}`}
-        style={({ pressed }) => [styles.button, pressed && styles.pressed, quantity <= min && styles.disabled]}
+        style={({ pressed }) => [
+          styles.button,
+          pressed && styles.pressed,
+          quantity <= min && styles.disabled,
+        ]}
       >
         {/* U+2212 MINUS SIGN, not a hyphen — it optically matches the plus. */}
         <Text variant="subheading">−</Text>
@@ -44,7 +48,11 @@ export function QuantityStepper({
         disabled={quantity >= max}
         accessibilityRole="button"
         accessibilityLabel={`Increase quantity of ${itemName}`}
-        style={({ pressed }) => [styles.button, pressed && styles.pressed, quantity >= max && styles.disabled]}
+        style={({ pressed }) => [
+          styles.button,
+          pressed && styles.pressed,
+          quantity >= max && styles.disabled,
+        ]}
       >
         <Text variant="subheading">+</Text>
       </Pressable>

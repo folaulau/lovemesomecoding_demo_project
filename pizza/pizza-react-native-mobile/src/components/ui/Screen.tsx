@@ -36,7 +36,10 @@ export function Screen({
 
   if (!scroll) {
     return (
-      <View testID={testID} style={[styles.screen, padded && styles.padded, { paddingBottom }, contentStyle]}>
+      <View
+        testID={testID}
+        style={[styles.screen, padded && styles.padded, { paddingBottom }, contentStyle]}
+      >
         {children}
       </View>
     );

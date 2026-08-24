@@ -1,13 +1,14 @@
 # Pizza demo app — progress report
 
-Shared context for the pizza demo (React + Angular frontends, Spring Boot backend).
+Shared context for the pizza demo (React + Angular + React Native frontends, Spring Boot backend).
 Read this first when resuming work.
 
 **Status:** Phases 0–6 complete, plus server-side carts, customer profiles (addresses + saved
-cards), a checkout address chooser, admin user management, a full reports data audit, and Redux
-on the admin side.
-**60 backend tests + 92 Playwright tests, all green.**
-**Last updated:** 2026-08-18
+cards), a checkout address chooser, admin user management, a full reports data audit, Redux on the
+admin side, an Angular frontend, and — new — a **React Native mobile app**.
+**60 backend tests + 92 React Playwright tests + the Angular suite + 193 Jest and 31 Playwright
+tests in the mobile app, all green.**
+**Last updated:** 2026-08-24
 
 **Run the backing services:** `cd pizza-springboot-backend && docker compose up -d` → MySQL on
 **3308** · add `--profile search|messaging|mail|all` for the optional ones
@@ -22,6 +23,12 @@ on the admin side.
   (**all of these need the backend running**)
 · `STRIPE_SECRET_KEY=sk_test_… npm run test:payment` — payment integration
 · `npm run screenshots` — regenerate `screenshots/`
+
+**Run the mobile app:** `cd pizza-react-native-mobile && nvm use && npx expo run:ios`
+· `npx expo start --web` → :8081 (or :8082) — the browser preview the Playwright suite drives
+· `npm test` — **193 Jest tests**, no backend needed · `npm run test:e2e` — 31 Playwright tests
+· `npm run test:all` runs both · `npm run screenshots` regenerates `screenshots/`
+· ⚠️ **Expo Go will not work** — Stripe's native module needs the dev build `expo run:ios` produces
 
 **Run the backend tests:** `cd pizza-springboot-backend && ./mvnw test` — 60 tests, needs MySQL
 · `./mvnw spotless:apply` before committing Java
@@ -1235,9 +1242,110 @@ Decisions worth keeping:
 - **`req.cancelled` is the only direct proof `switchMap` unsubscribed.** Asserting on the final
   rendered results cannot distinguish "cancelled the stale request" from "got lucky with ordering".
 
+---
+
+## Phase 9 — the React Native mobile app (DONE, 2026-08-24)
+
+A third frontend, `pizza-react-native-mobile`: **Expo SDK 57 · React Native 0.86 · React 19 ·
+TypeScript · expo-router**, against the same Spring Boot API. Customer flows only.
+
+### Decisions
+
+| Decision | Choice | Why |
+|---|---|---|
+| Scope | **Customer flows only, no `/admin`** | User's call. Store management belongs on a desktop, and leaving it out keeps the diff against `pizza-react-frontend` purely "native vs browser". |
+| Toolchain | **Expo + a development build** (`expo run:ios`) | User's call. expo-router reads close to react-router; the dev build is what lets Stripe's native module link at all. |
+| Router | **expo-router** (file-based) | The folder structure IS the navigation graph — no route table to drift from the files. |
+| State | **Context only** — auth, menu, cart, toasts | Mirrors the React app's customer side exactly. Redux is absent because `/admin`, the thing that justified it there, is absent here. |
+| Styling | **`theme/tokens.ts`, a hand port of `_tokens.scss`** | User's call. A UI kit would look like Material, and NativeWind would reintroduce the Tailwind the Angular app deliberately overruled. |
+| Payment | **Stripe PaymentSheet**, quarantined behind a `PaymentGateway` interface | The sheet keeps the card out of our code entirely. The interface keeps a native-only module out of the web bundle. |
+| Token storage | **`expo-secure-store`** (iOS Keychain / Android EncryptedSharedPreferences) | Better than the web's `localStorage`, and the reason `AuthProvider` has an `initialising` state — reading it is async. |
+| Cart | **Server-side, same as web**, plus an `AppState` background flush | A phone can be killed before a 300 ms debounce fires. |
+| Screens tested by | **Playwright against the web target**; logic by Jest | Matches the project convention. RNTL covers what the browser cannot reach. |
+
+### What is genuinely different from the web apps
+
+Everything below has a code comment saying what the web does about the same problem — the
+comments are the tutorial.
+
+- **No cascade, no `var()`.** A style is a plain object resolved by the code that uses it, so every
+  piece of text names its own size and colour. `components/ui/Text.tsx` is the closed set that
+  replaces Bootstrap's `.h5` / `.small` / `.text-muted`.
+- **Safe area.** The screen is not a rectangle you own. `Screen.tsx` applies `useSafeAreaInsets`,
+  and the values differ per device and orientation, so they cannot be constants.
+- **No portal needed for toasts.** React Native's `Modal` is a real native window and
+  `position: absolute` is not clipped the way the web version was, so `createPortal` has no analogue.
+- **The API host has to be resolved.** `localhost` means the Mac on the iOS simulator, the emulator
+  itself on Android (host is `10.0.2.2`), and nothing at all on a real phone — where Expo's
+  `hostUri` is asked instead. `src/api/config.ts`.
+- **`fetch` needs a timeout.** A phone on a weak signal does not fail fast; it hangs, and the
+  spinner spins for minutes.
+- **`crypto.randomUUID` does not exist.** Hermes has no Web Crypto; `expo-crypto` bridges to the
+  platform's real random source. `Math.random()` is the tempting wrong answer.
+- **Shadows are platform-split** — iOS `shadow*`, Android `elevation`. Both, or the cards are flat
+  on Android.
+
+### Gotchas paid for building it
+
+- ⚠️ **`Alert.alert` is a silent NO-OP on react-native-web.** The delete-confirmation flow works on
+  device and simply cannot be driven from the web target; `e2e/profile.spec.ts` cleans up through
+  the API and says so.
+- ⚠️ **react-native-web never maps `accessibilityState` onto `aria-*`.** A radio's checked state is
+  correct on device and invisible in the DOM, so an E2E assertion on `aria-checked` fails against
+  code that is right. Assert on an observable consequence instead — the builder test checks the
+  price.
+- ⚠️ **React 19's `react-hooks` rules are errors, and they caught two real defects.**
+  `useRef(new Animated.Value(0)).current` reads a ref during render (`useState(() => …)` is the
+  honest spelling), and `stateRef.current = state` in a render body is a side effect on a render
+  React may never commit.
+- ⚠️ **Reset state with a `key`, not an effect.** Both sheets are remounted by a counter the parent
+  bumps on open. The key is the OPEN COUNT, not the product id — the id becomes `undefined` on
+  close and would remount mid-animation, cutting the slide-out short.
+- ⚠️ **A fetch hoisted into `useCallback` and called from an effect reads as a synchronous setState**
+  to the linter and the React Compiler, however many awaits are inside it. Declaring it inside the
+  effect — with a reload counter as the dependency — is the shape the rest of the codebase already
+  used in `MenuProvider`.
+- ⚠️ **`jest.mock` factories are hoisted above the imports.** They cannot close over an ordinary
+  `const`: prefix the name with `mock`, or `require` inside the factory.
+- ⚠️ **A `useMenu` mock returning a fresh object per call hangs the test suite.** New `products`
+  array → new effect dependency → hydrate → re-render → forever. The real provider memoises; a
+  careless mock reintroduces the loop. Cost: one 15-second timeout with no useful stack.
+- ⚠️ **RNTL 14 made `render` and `fireEvent` async.** A missing `await` surfaces as
+  "`render` function has not been called", which sounds like the opposite problem.
+- ⚠️ **`StyleSheet.absoluteFillObject` was removed in RN 0.86**, and `newArchEnabled` / `splash` are
+  no longer `ExpoConfig` keys in SDK 57.
+- ⚠️ **The `@stripe/stripe-react-native` config plugin requires `merchantIdentifier`** even with
+  Apple Pay off. Without it, `expo install` crashes with
+  `Cannot read properties of undefined (reading 'merchantIdentifier')`.
+- ⚠️ **`tsc` needs `"types": ["jest"]`** once `jest.setup.ts` exists, or the typecheck fails on
+  files that run perfectly well.
+- Two defects the tests found in the app itself: **`ToastProvider` never cleared its timers on
+  unmount** (Jest reported it as "Jest did not exit"), and **`ErrorState` was not announced as an
+  alert** — now an `accessible` inner View, with the retry button deliberately outside it, because
+  an `accessible` container hides its children from the iOS accessibility tree.
+
+### Backend change
+
+One line, plus comments: `pizza.cors.allowed-origins` gained `http://localhost:8081` and
+`http://localhost:8082` for the mobile app's **web preview**. Metro falls forward to 8082 when 8081
+is taken (Docker Desktop uses it here). The iOS and Android builds are not browsers and need no
+entry at all.
+
+### Verified
+
+- 193 Jest tests, 31 Playwright tests, typecheck and lint all clean.
+- Driven end to end through the running app against the live backend: browse → filter → build a
+  pizza → cart → delivery/pickup → guest checkout → order created (`PENDING_PAYMENT`, priced by the
+  server) → sign in → orders → profile. Screenshots in `pizza-react-native-mobile/screenshots/`.
+- ⚠️ **NOT verified on a simulator.** This machine has Xcode 15.4 and **zero** installed simulator
+  runtimes; RN 0.86 needs Xcode 16.1+. `npx expo run:ios` is the remaining step once Xcode is
+  updated.
+
 ## Still open
 
-- Checkout still does not offer saved cards, in EITHER frontend. Cards can be saved and managed on
+- **The mobile app has never been run on a simulator or a device** — see above. Everything is
+  verified through the web target, Jest and the live API, but the native build is unexercised.
+- Checkout still does not offer saved cards, in ANY of the three frontends. Cards can be saved and managed on
   the profile page; wiring "pay with a saved card" remains the natural next step.
 - The cart drawer does not trap focus (see above).
 - `httpResource` is marked `@experimental` in Angular 21. Used deliberately — it is the concept

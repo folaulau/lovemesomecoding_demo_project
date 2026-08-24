@@ -77,7 +77,11 @@ export function Button({
       {loading ? (
         <ActivityIndicator
           size="small"
-          color={variant === 'primary' || variant === 'danger' ? theme.colors.onPrimary : theme.colors.primary}
+          color={
+            variant === 'primary' || variant === 'danger'
+              ? theme.colors.onPrimary
+              : theme.colors.primary
+          }
         />
       ) : (
         <View style={styles.labelStack}>

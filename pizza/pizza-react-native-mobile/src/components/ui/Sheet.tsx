@@ -1,12 +1,5 @@
 import type { ReactNode } from 'react';
-import {
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
-  Pressable,
-  StyleSheet,
-  View,
-} from 'react-native';
+import { KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Text } from './Text';
 import { theme } from '@/theme';
@@ -64,7 +57,10 @@ export function Sheet({
       >
         <Pressable style={styles.backdrop} onPress={onClose} accessibilityLabel="Close" />
 
-        <View style={[styles.panel, { paddingBottom: insets.bottom + theme.spacing.md }]} testID={testID}>
+        <View
+          style={[styles.panel, { paddingBottom: insets.bottom + theme.spacing.md }]}
+          testID={testID}
+        >
           <View style={styles.grabber} />
 
           <View style={styles.header}>

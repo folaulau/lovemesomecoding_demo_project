@@ -23,7 +23,8 @@ export type TextVariant =
   | 'caption'
   | 'mono';
 
-export type TextTone = 'default' | 'muted' | 'subtle' | 'primary' | 'inverse' | 'danger' | 'success';
+export type TextTone =
+  'default' | 'muted' | 'subtle' | 'primary' | 'inverse' | 'danger' | 'success';
 
 export interface TextProps extends RNTextProps {
   variant?: TextVariant;
@@ -48,7 +49,11 @@ export function Text({
 }
 
 const styles = StyleSheet.create({
-  display: { fontSize: theme.fontSize.display, fontWeight: theme.fontWeight.heavy, letterSpacing: -1 },
+  display: {
+    fontSize: theme.fontSize.display,
+    fontWeight: theme.fontWeight.heavy,
+    letterSpacing: -1,
+  },
   title: { fontSize: theme.fontSize.xxl, fontWeight: theme.fontWeight.heavy, letterSpacing: -0.5 },
   heading: { fontSize: theme.fontSize.lg, fontWeight: theme.fontWeight.bold },
   subheading: { fontSize: theme.fontSize.md, fontWeight: theme.fontWeight.semibold },

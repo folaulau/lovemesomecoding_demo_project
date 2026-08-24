@@ -72,6 +72,24 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     [dismiss],
   );
 
+  /*
+   * Clear every pending timer when the provider unmounts.
+   *
+   * Without this, a toast shown just before navigating away leaves a `setTimeout` holding a
+   * reference to a setState on an unmounted tree. Jest catches it as "Jest did not exit one second
+   * after the test run has completed", which is exactly the signal it is meant to be — on a device
+   * it is a small leak that a busy screen repeats hundreds of times.
+   *
+   * The empty dependency array is deliberate: this must run on unmount and never in between.
+   */
+  useEffect(() => {
+    const pending = timers.current;
+    return () => {
+      pending.forEach(clearTimeout);
+      pending.clear();
+    };
+  }, []);
+
   const value = useMemo(() => ({ showToast }), [showToast]);
 
   return (
@@ -141,7 +159,9 @@ function ToastCard({ toast }: { toast: ToastMessage }) {
         {
           opacity: enter,
           // Slide down a few points as it fades in. `interpolate` maps 0→1 onto -8→0.
-          transform: [{ translateY: enter.interpolate({ inputRange: [0, 1], outputRange: [-8, 0] }) }],
+          transform: [
+            { translateY: enter.interpolate({ inputRange: [0, 1], outputRange: [-8, 0] }) },
+          ],
         },
       ]}
       accessibilityRole="alert"

@@ -1,9 +1,4 @@
-import {
-  cartReducer,
-  initialCartState,
-  isSameConfiguration,
-  type CartState,
-} from '../cartReducer';
+import { cartReducer, initialCartState, isSameConfiguration, type CartState } from '../cartReducer';
 import type { CartItem, Topping } from '@/types';
 
 function topping(id: string): Topping {

@@ -1,7 +1,14 @@
 import { useCallback, useMemo, useState } from 'react';
 import { FlatList, StyleSheet, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { EmptyState, ErrorState, LoadingState, SegmentedControl, Screen, Text } from '@/components/ui';
+import {
+  EmptyState,
+  ErrorState,
+  LoadingState,
+  SegmentedControl,
+  Screen,
+  Text,
+} from '@/components/ui';
 import { ProductCard } from '../components/ProductCard';
 import { PizzaBuilderSheet } from '../components/PizzaBuilderSheet';
 import { useMenu } from '../state/MenuProvider';

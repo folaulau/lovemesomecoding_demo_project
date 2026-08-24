@@ -79,26 +79,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   /** Shared by login and register — the only difference is which endpoint is called. */
-  const authenticate = useCallback(
-    async (call: () => Promise<AuthenticationResponse>) => {
-      setLoading(true);
-      setError(null);
-      setFieldErrors({});
-      try {
-        const response = await call();
-        await tokenStore.set(response.token);
-        setUser(response.user);
-      } catch (err) {
-        setError(toUserMessage(err, 'Could not reach the server. Is the API running?'));
-        if (err instanceof ApiError) setFieldErrors(err.fieldErrors());
-        // Rethrow so the calling screen knows not to navigate away.
-        throw err;
-      } finally {
-        setLoading(false);
-      }
-    },
-    [],
-  );
+  const authenticate = useCallback(async (call: () => Promise<AuthenticationResponse>) => {
+    setLoading(true);
+    setError(null);
+    setFieldErrors({});
+    try {
+      const response = await call();
+      await tokenStore.set(response.token);
+      setUser(response.user);
+    } catch (err) {
+      setError(toUserMessage(err, 'Could not reach the server. Is the API running?'));
+      if (err instanceof ApiError) setFieldErrors(err.fieldErrors());
+      // Rethrow so the calling screen knows not to navigate away.
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   const login = useCallback(
     (email: string, password: string) => authenticate(() => authApi.login(email, password)),

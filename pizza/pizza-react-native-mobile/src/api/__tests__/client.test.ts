@@ -25,7 +25,12 @@ describe('apiClient', () => {
 
   beforeEach(() => {
     fetchMock.mockReset();
-    global.fetch = fetchMock as unknown as typeof fetch;
+    /*
+     * `globalThis`, not `global`. Both exist under Jest, but `global` is a Node type this project
+     * does not pull in (`types: ["jest"]` in tsconfig), while `globalThis` is standard ES2020 and
+     * is also the spelling that works in Hermes.
+     */
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
   });
 
   afterEach(async () => {
@@ -38,7 +43,10 @@ describe('apiClient', () => {
     const result = await apiClient.get<{ id: string }[]>('/api/products');
 
     expect(result).toEqual([{ id: 'p1' }]);
-    expect(fetchMock).toHaveBeenCalledWith(`${BASE}/api/products`, expect.objectContaining({ method: 'GET' }));
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${BASE}/api/products`,
+      expect.objectContaining({ method: 'GET' }),
+    );
   });
 
   it('sends a JSON body and the matching content type', async () => {
@@ -81,7 +89,11 @@ describe('apiClient', () => {
   });
 
   it('returns undefined for 204 rather than trying to parse an empty body', async () => {
-    fetchMock.mockResolvedValue({ ok: true, status: 204, text: async () => '' } as unknown as Response);
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 204,
+      text: async () => '',
+    } as unknown as Response);
 
     await expect(apiClient.delete('/api/me/addresses/a1', { auth: true })).resolves.toBeUndefined();
   });
@@ -111,7 +123,11 @@ describe('apiClient', () => {
   });
 
   it('falls back to a generic message when the error body has none', async () => {
-    fetchMock.mockResolvedValue({ ok: false, status: 500, text: async () => '' } as unknown as Response);
+    fetchMock.mockResolvedValue({
+      ok: false,
+      status: 500,
+      text: async () => '',
+    } as unknown as Response);
 
     const error = (await apiClient.get('/api/products').catch((err: unknown) => err)) as ApiError;
 
@@ -135,7 +151,9 @@ describe('apiClient', () => {
   it('turns an unreachable server into a NetworkError naming the base URL', async () => {
     fetchMock.mockRejectedValue(new TypeError('Network request failed'));
 
-    const error = (await apiClient.get('/api/products').catch((err: unknown) => err)) as NetworkError;
+    const error = (await apiClient
+      .get('/api/products')
+      .catch((err: unknown) => err)) as NetworkError;
 
     expect(error).toBeInstanceOf(NetworkError);
     expect(error.message).toContain(BASE);

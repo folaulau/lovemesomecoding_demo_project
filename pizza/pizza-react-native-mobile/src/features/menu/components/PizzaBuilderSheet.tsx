@@ -163,7 +163,9 @@ export function PizzaBuilderSheet({
                   <Chip
                     key={option.id}
                     label={option.name}
-                    detail={option.priceDelta > 0 ? `+${formatMoney(option.priceDelta)}` : undefined}
+                    detail={
+                      option.priceDelta > 0 ? `+${formatMoney(option.priceDelta)}` : undefined
+                    }
                     selected={crustId === option.id}
                     onPress={() => setCrustId(option.id)}
                     testID={`crust-${option.id}`}

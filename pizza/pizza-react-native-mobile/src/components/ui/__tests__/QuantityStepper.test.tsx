@@ -29,7 +29,9 @@ describe('QuantityStepper', () => {
 
   it('will not go above the maximum', async () => {
     const onChange = jest.fn();
-    await render(<QuantityStepper quantity={10} onChange={onChange} itemName="Pepperoni" max={10} />);
+    await render(
+      <QuantityStepper quantity={10} onChange={onChange} itemName="Pepperoni" max={10} />,
+    );
 
     await fireEvent.press(screen.getByLabelText('Increase quantity of Pepperoni'));
 

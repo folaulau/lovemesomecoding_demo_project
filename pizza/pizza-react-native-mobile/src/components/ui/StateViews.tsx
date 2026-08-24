@@ -57,23 +57,34 @@ export function EmptyState({
   );
 }
 
-export function ErrorState({
-  message,
-  onRetry,
-}: {
-  message: string;
-  onRetry?: () => void;
-}) {
+export function ErrorState({ message, onRetry }: { message: string; onRetry?: () => void }) {
   return (
-    <View style={styles.errorBox} accessibilityRole="alert">
-      <Text variant="bodyStrong" tone="danger">
-        Something went wrong
-      </Text>
-      <Text variant="caption" tone="muted" style={styles.caption}>
-        {message}
-      </Text>
+    <View style={styles.errorBox}>
+      {/*
+       * `accessible` groups the two lines into ONE element, so VoiceOver reads "Something went
+       * wrong, could not load the menu" as a single announcement instead of two separate stops.
+       *
+       * The retry button is deliberately OUTSIDE this View. An `accessible` container hides its
+       * children from the accessibility tree on iOS, so a button nested inside would become
+       * unreachable — the classic way this pattern goes wrong.
+       */}
+      <View accessible accessibilityRole="alert">
+        <Text variant="bodyStrong" tone="danger">
+          Something went wrong
+        </Text>
+        <Text variant="caption" tone="muted" style={styles.caption}>
+          {message}
+        </Text>
+      </View>
+
       {onRetry ? (
-        <Button title="Try again" variant="outline" size="sm" onPress={onRetry} style={styles.action} />
+        <Button
+          title="Try again"
+          variant="outline"
+          size="sm"
+          onPress={onRetry}
+          style={styles.action}
+        />
       ) : null}
     </View>
   );

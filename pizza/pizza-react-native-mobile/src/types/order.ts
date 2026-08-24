@@ -2,12 +2,7 @@ import type { UUID } from './common';
 import type { SizeName } from './catalog';
 import type { OrderType } from './cart';
 
-export type OrderStatus =
-  | 'PENDING_PAYMENT'
-  | 'PAID'
-  | 'PREPARING'
-  | 'COMPLETED'
-  | 'CANCELLED';
+export type OrderStatus = 'PENDING_PAYMENT' | 'PAID' | 'PREPARING' | 'COMPLETED' | 'CANCELLED';
 
 export interface OrderItemTopping {
   id: UUID;

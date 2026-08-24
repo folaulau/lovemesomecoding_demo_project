@@ -26,8 +26,20 @@ const PIZZA: Product = {
   updatedAt: '',
 };
 
-const CRUST: Crust = { id: 'crust-1', name: 'Original', priceDelta: 0, active: true, displayOrder: 1 };
-const TOPPING: Topping = { id: 'top-1', name: 'Mushroom', price: 1.5, category: 'VEGGIE', active: true };
+const CRUST: Crust = {
+  id: 'crust-1',
+  name: 'Original',
+  priceDelta: 0,
+  active: true,
+  displayOrder: 1,
+};
+const TOPPING: Topping = {
+  id: 'top-1',
+  name: 'Mushroom',
+  price: 1.5,
+  category: 'VEGGIE',
+  active: true,
+};
 
 /*
  * The menu provider is mocked rather than rendered.
@@ -35,9 +47,15 @@ const TOPPING: Topping = { id: 'top-1', name: 'Mushroom', price: 1.5, category: 
  * CartProvider only needs `products`, `crusts` and `loading` from it. Mocking keeps this test off
  * the network and makes "the menu is still loading" a state we can set deliberately, which is
  * awkward to arrange with the real provider.
+ *
+ * ⚠️ THE VALUE IS BUILT ONCE, outside the hook. Returning a fresh object literal — and therefore a
+ * fresh `products` ARRAY — on every call gives the cart's hydrate effect a new dependency on every
+ * render, so it re-runs, dispatches, re-renders, and the test hangs in an infinite loop. The real
+ * MenuProvider memoises exactly this, which is why the app does not have the problem; a careless
+ * mock is what reintroduces it.
  */
-jest.mock('@/features/menu/state/MenuProvider', () => ({
-  useMenu: () => ({
+jest.mock('@/features/menu/state/MenuProvider', () => {
+  const menuValue = {
     products: [PIZZA],
     crusts: [CRUST],
     toppings: [TOPPING],
@@ -46,8 +64,9 @@ jest.mock('@/features/menu/state/MenuProvider', () => ({
     loading: false,
     error: null,
     reload: jest.fn(),
-  }),
-}));
+  };
+  return { useMenu: () => menuValue };
+});
 
 jest.mock('@/api', () => ({
   cartApi: {
@@ -72,7 +91,13 @@ function Harness() {
       <Pressable
         testID="add"
         onPress={() =>
-          addItem({ product: PIZZA, size: 'MEDIUM', crust: CRUST, toppings: [TOPPING], quantity: 1 })
+          addItem({
+            product: PIZZA,
+            size: 'MEDIUM',
+            crust: CRUST,
+            toppings: [TOPPING],
+            quantity: 1,
+          })
         }
       >
         <Text>add</Text>

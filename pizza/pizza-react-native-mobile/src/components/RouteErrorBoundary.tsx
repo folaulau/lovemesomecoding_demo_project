@@ -46,6 +46,10 @@ const styles = StyleSheet.create({
   wrapper: { paddingTop: theme.spacing.xxxl, alignItems: 'center' },
   emoji: { fontSize: 52, marginBottom: theme.spacing.md },
   copy: { marginTop: theme.spacing.sm },
-  detail: { marginTop: theme.spacing.xl, alignSelf: 'stretch', backgroundColor: theme.colors.surfaceAlt },
+  detail: {
+    marginTop: theme.spacing.xl,
+    alignSelf: 'stretch',
+    backgroundColor: theme.colors.surfaceAlt,
+  },
   action: { marginTop: theme.spacing.xl },
 });

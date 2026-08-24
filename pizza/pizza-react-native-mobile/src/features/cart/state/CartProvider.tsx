@@ -16,7 +16,15 @@ import { newId } from '@/domain/ids';
 import { calculateTotals, type CartTotals } from '@/domain/money';
 import { useMenu } from '@/features/menu/state/MenuProvider';
 import { cartReducer, initialCartState, type CartState } from './cartReducer';
-import type { CartItem, CartWriteRequest, Crust, OrderType, Product, SizeName, Topping } from '@/types';
+import type {
+  CartItem,
+  CartWriteRequest,
+  Crust,
+  OrderType,
+  Product,
+  SizeName,
+  Topping,
+} from '@/types';
 
 /* ==========================================================================
  * The cart: useReducer for the rules, effects for the persistence.

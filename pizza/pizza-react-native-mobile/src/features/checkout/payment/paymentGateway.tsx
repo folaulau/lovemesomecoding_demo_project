@@ -1,11 +1,13 @@
 import { useCallback, useMemo } from 'react';
 import type { ReactNode } from 'react';
-import {
-  StripeProvider as StripeSdkProvider,
-  useStripe,
-} from '@stripe/stripe-react-native';
+import { StripeProvider as StripeSdkProvider, useStripe } from '@stripe/stripe-react-native';
 import { STRIPE_PUBLISHABLE_KEY, isStripeConfigured } from '@/api';
-import type { CardSetupOutcome, PaymentGateway, PaymentOutcome, PaymentSheetRequest } from './types';
+import type {
+  CardSetupOutcome,
+  PaymentGateway,
+  PaymentOutcome,
+  PaymentSheetRequest,
+} from './types';
 
 /**
  * The NATIVE payment implementation. Metro loads this on iOS and Android.

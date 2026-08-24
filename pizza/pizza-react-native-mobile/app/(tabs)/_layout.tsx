@@ -36,7 +36,10 @@ export default function TabsLayout() {
           headerTitleStyle: { fontWeight: theme.fontWeight.bold },
           tabBarActiveTintColor: theme.colors.primary,
           tabBarInactiveTintColor: theme.colors.textMuted,
-          tabBarStyle: { backgroundColor: theme.colors.surface, borderTopColor: theme.colors.borderSubtle },
+          tabBarStyle: {
+            backgroundColor: theme.colors.surface,
+            borderTopColor: theme.colors.borderSubtle,
+          },
           sceneStyle: { backgroundColor: theme.colors.background },
           // One header button for every tab, so the cart is reachable from anywhere.
           headerRight: () => <CartHeaderButton onPress={() => setCartOpen(true)} />,

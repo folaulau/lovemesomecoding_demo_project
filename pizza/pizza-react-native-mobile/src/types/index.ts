@@ -18,13 +18,7 @@ export type {
   Topping,
   Crust,
 } from './catalog';
-export type {
-  OrderType,
-  CartItem,
-  ServerCartItem,
-  ServerCart,
-  CartWriteRequest,
-} from './cart';
+export type { OrderType, CartItem, ServerCartItem, ServerCart, CartWriteRequest } from './cart';
 export type {
   OrderStatus,
   OrderItemTopping,

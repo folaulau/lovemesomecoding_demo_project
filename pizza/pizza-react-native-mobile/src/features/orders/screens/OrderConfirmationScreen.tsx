@@ -1,7 +1,16 @@
 import { useEffect, useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Button, Card, Divider, ErrorState, LoadingState, PriceRow, Screen, Text } from '@/components/ui';
+import {
+  Button,
+  Card,
+  Divider,
+  ErrorState,
+  LoadingState,
+  PriceRow,
+  Screen,
+  Text,
+} from '@/components/ui';
 import { OrderStatusBadge } from '../components/OrderStatusBadge';
 import { orderApi, toUserMessage } from '@/api';
 import { formatMoney } from '@/domain/money';

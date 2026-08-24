@@ -33,7 +33,10 @@ export class ApiError extends Error {
 
 /** Thrown when the request never reached the server at all. */
 export class NetworkError extends Error {
-  constructor(message: string, readonly cause?: unknown) {
+  constructor(
+    message: string,
+    readonly cause?: unknown,
+  ) {
     super(message);
     this.name = 'NetworkError';
     Object.setPrototypeOf(this, NetworkError.prototype);

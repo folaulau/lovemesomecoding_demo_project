@@ -26,15 +26,21 @@ instructions; that one is the state.
 - `/admin`: manage products, toppings, crusts, orders and users.
 - `/admin` reports: revenue over time, top products, orders by status, headline totals — all from
   real database aggregates, never mock data.
+- **`/admin` is web-only.** The React Native app is customer-facing and stops there, deliberately —
+  store management belongs on a desktop, and leaving it out keeps the diff between the mobile app
+  and `pizza-react-frontend` purely "native vs browser" rather than "different product".
 
 ### Still open
 - **Checkout does not yet offer saved cards** — it always collects a fresh one. Cards can be saved
   and managed on the profile page; wiring "pay with a saved card" is the natural next step.
-  This is true of **both** frontends.
+  This is true of **all three** frontends.
 
 ---
 
 ## Structure
+
+Four apps against one API: a Spring Boot backend, two web frontends that are deliberately the same
+app in different frameworks, and a React Native mobile app.
 
 ### Backend — `pizza-springboot-backend`
 
@@ -208,6 +214,71 @@ Deliberately the same split as React's Redux/Context line, so the two apps can b
 - Charts are hand-written SVG (`shared/charts/`) rather than a chart library — same visual design
   and the same data-viz rules as the React app's Recharts version.
 
+### Mobile — `pizza-react-native-mobile`
+
+Expo SDK 57 (expo-router, **development build** — not Expo Go) + React Native 0.86 + React 19 +
+TypeScript, against the same API. **Customer flows only — there is no `/admin` here**, deliberately:
+store management belongs on the web, and leaving it out keeps the diff against
+`pizza-react-frontend` purely "native vs browser".
+
+```
+app/                     expo-router: the folder structure IS the navigation graph
+├── _layout.tsx          providers + root stack + the splash gate
+├── (tabs)/              Home · Menu · Orders · Profile
+├── checkout.tsx · order/[orderId].tsx · login.tsx · register.tsx · +not-found.tsx
+src/
+├── api/                 client.ts (the ONLY fetch) · config · apiError · endpoints/*.api.ts
+├── components/ui/       the design system — Button, Card, Sheet, TextField, Screen, …
+├── domain/              money.ts, ids.ts — pure, React-free
+├── features/            auth · cart · checkout · home · menu · orders · profile
+├── providers/           AppProviders · ToastProvider
+├── storage/             secureStorage (keychain) · deviceStorage · key registry
+├── theme/               tokens.ts + theme.ts — the native port of `_tokens.scss`
+└── types/               the API contract, one file per domain
+```
+
+- **Feature-first.** A feature owns its state, screens and components; anything two features share
+  moves down into `components/ui`, `domain` or `api`. **Route files are one line** — they name a
+  screen, they never implement one. Imports use the `@/` alias, declared once in `tsconfig.json`.
+- **State is Context, never Redux** — auth, menu, cart, toasts, mirroring the React app's customer
+  side. Redux is absent because the thing that justified it there (`/admin`) is absent here.
+- ⚠️ **The provider order in `AppProviders` is load-bearing.** `MenuProvider` must sit above
+  `CartProvider`: rehydrating a saved cart needs the catalogue to re-price it.
+- **There is no Bootstrap.** React Native has no cascade and no `var()`, so `theme/tokens.ts`
+  re-states the same palette as constants and every component imports what it needs.
+- **Use React Native's major features and comment WHY each one earns its place**, exactly as the two
+  web apps do — and say what the web does about the same problem. The comments are the tutorial.
+
+#### The native-only concerns, and where they live
+- ⚠️ **The JWT goes in the OS keystore** (`expo-secure-store`), not `localStorage`. Reading it is
+  ASYNC, which is why `AuthProvider` has an `initialising` state and the root layout holds the
+  splash screen. Do not "simplify" that away.
+- ⚠️ **The cart flushes on `AppState` background.** A browser tab lives until it is closed; a phone
+  can suspend or kill the process before a 300 ms debounce fires. Without the flush, adding a pizza
+  and immediately switching apps loses it.
+- ⚠️ **Stripe is quarantined in `features/checkout/payment/`** behind a `PaymentGateway` interface,
+  with a `.web.tsx` sibling Metro picks by platform. `@stripe/stripe-react-native` is a NATIVE
+  module with no web build — importing it anywhere else breaks the web preview and makes the
+  checkout screen untestable. It uses **PaymentSheet**, not a hand-rolled `CardField`.
+- ⚠️ **The API host is resolved, not hard-coded** (`src/api/config.ts`): `localhost` on the iOS
+  simulator, `10.0.2.2` on the Android emulator, and the LAN address Expo served the bundle from on
+  a real device.
+- ⚠️ **Reset state with a `key`, not an effect.** `PizzaBuilderSheet` and `AddressFormSheet` are
+  remounted by a counter the parent bumps on open. An effect copying props into state renders the
+  stale values for a frame and trips `react-hooks/set-state-in-effect`.
+- ⚠️ **`useRef(...).current` read during render is now a lint ERROR** (`react-hooks/refs`). For an
+  `Animated.Value`, `useState(() => new Animated.Value(0))` says the same thing honestly.
+- ⚠️ **Shadows are platform-split** — iOS reads `shadow*`, Android reads `elevation`. Set both, or
+  the cards are flat on Android. Likewise `autoCapitalize="none"` on every email field.
+- ⚠️ **`StyleSheet.absoluteFillObject` was removed in RN 0.86.** Write the four edges out.
+
+#### What the web preview cannot do
+`npx expo start --web` renders the same components through react-native-web and is what the
+Playwright suite drives. Three things genuinely do not work there, and the app says so rather than
+failing silently: **Stripe's payment sheet** (no web build), **`Alert.alert`** (a silent no-op, so
+delete confirmations do nothing), and **`accessibilityState`** (never mapped onto `aria-*`, so a
+radio's checked state is invisible to the DOM though correct on device).
+
 ---
 
 ## Security — non-negotiable
@@ -252,11 +323,25 @@ cd pizza-react-frontend && nvm use && npm run dev          # :5173
 
 # frontend — Angular (same backend)
 cd pizza-angular-frontend && nvm use && npm start          # :4200
+
+# mobile — React Native (same backend). A DEVELOPMENT BUILD, not Expo Go.
+cd pizza-react-native-mobile && nvm use && npx expo run:ios     # or run:android
+npx expo start --web                                       # :8081 (or :8082) — preview + Playwright
+npm test                                                   # 193 Jest tests, no backend needed
+npm run test:e2e                                           # 31 Playwright tests, through the web target
 ```
 
-⚠️ **The Angular app must be served on 4200 and the React app on 5173** — those two origins are
-what `pizza.cors.allowed-origins` allows. Any other port fails CORS, and the symptom is a blank
-page rather than an error anyone would recognise.
+⚠️ **The Angular app must be served on 4200, the React app on 5173, and the mobile web preview on
+8081 or 8082** — those are the origins `pizza.cors.allowed-origins` allows. Any other port fails
+CORS, and the symptom is a blank page rather than an error anyone would recognise. The iOS and
+Android builds are not browsers and are not subject to CORS at all.
+
+⚠️ **Expo Go cannot run this app.** `@stripe/stripe-react-native` is a native module, and Expo Go
+ships a fixed set that does not include it. `expo run:ios` builds the dev client that does.
+
+⚠️ **React Native 0.86 needs Xcode 16.1+ and an installed simulator runtime.** Check both —
+`xcodebuild -version` and `xcrun simctl list runtimes`; a fresh Xcode often has no runtime at all,
+and the resulting error points nowhere useful.
 
 ### Backing services — `pizza-springboot-backend/docker-compose.yml`
 
@@ -304,14 +389,18 @@ is especially prone to this after an external Maven build.
 ## Test
 
 - **Playwright, driving every flow through the UI** — browse, cart, auth, checkout, orders,
-  profile, admin, plus API guards not observable through the UI. **Both** frontends have a suite;
-  they mirror each other.
+  profile, admin, plus API guards not observable through the UI. **All three** frontends have a
+  suite; they mirror each other. `pizza-react-native-mobile`'s drives the **web** target
+  (react-native-web), where `testID` becomes `data-testid`.
+- `pizza-react-native-mobile` also has a **Jest suite** (`npm test`, 193 tests) for everything the
+  web target cannot reach: the keychain, `AppState`, and the Stripe adapter against a mocked SDK.
+  Its screens show 0% in the Jest coverage report and are covered by Playwright instead.
 - `pizza-angular-frontend` also has a **Vitest unit suite** (`npm test`) for the things cheaper to
   test in isolation: a pipe, a directive, a guard, the HTTP interceptor, and the debounced search.
   ⚠️ Start Playwright only once the dev server has finished rebuilding — a run started mid-rebuild
   has produced failures that then passed in isolation and on every later run.
-- ⚠️ **Never run the two suites at once.** They share the backend and the database, so each sees
-  the other's fixtures and counts.
+- ⚠️ **Never run two suites at once.** All three share the backend and the database, so each sees
+  the others' fixtures and counts.
 - `npm run test:all` runs the whole suite. Prefer it: the narrower scripts name their specs
   explicitly, and a new spec is not run until someone remembers to add it.
 - Payment: order → confirm with Stripe's test card → assert **our** API reports `PAID`.

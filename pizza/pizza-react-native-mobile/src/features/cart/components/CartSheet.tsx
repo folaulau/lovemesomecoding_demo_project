@@ -77,7 +77,7 @@ export function CartSheet({ visible, onClose }: { visible: boolean; onClose: () 
           <PriceRow label="Subtotal" amount={totals.subtotal} />
           <PriceRow label="Tax" amount={totals.tax} />
           {totals.deliveryFee > 0 ? (
-            <PriceRow label="Delivery" amount={totals.deliveryFee} />
+            <PriceRow label="Delivery" amount={totals.deliveryFee} testID="cart-delivery-fee" />
           ) : null}
           <PriceRow label="Total" amount={totals.total} emphasis testID="cart-total" />
 
