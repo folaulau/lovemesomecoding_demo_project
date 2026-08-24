@@ -1,0 +1,116 @@
+# ReelCMS backing services.
+#
+#   docker compose up -d                  MongoDB on 27018
+#   docker compose --profile tools up -d   + mongo-express on 8091
+#
+# ---------------------------------------------------------------------------
+# Why a replica set, and why the port numbers look redundant
+# ---------------------------------------------------------------------------
+#
+# 1. MongoDB runs as a SINGLE-NODE REPLICA SET, not a standalone. Change streams
+#    are built on the oplog, and a standalone mongod has no oplog at all. Start
+#    this as a plain `mongod` and every change-stream call fails with
+#
+#        The $changeStream stage is only supported on replica sets
+#
+#    ...which does not obviously point back at this file.
+#
+# 2. mongod listens on 27018 INSIDE the container and is published as 27018 on
+#    the host - the same number on both sides, which looks like a pointless
+#    mapping until you know what a replica set does to a client.
+#
+#    A replica set does not just serve the client that connects to it. It hands
+#    back its member list, and the driver then RECONNECTS to whatever address
+#    that list advertises, discarding the address you dialled. So the advertised
+#    host:port must be reachable under that exact spelling from wherever the app
+#    runs. Publish 27018->27017 and advertise "localhost:27017" and the driver
+#    dials localhost:27018, is told "the primary is at localhost:27017", and
+#    hangs there until it times out with a ServerSelectionTimeout that never
+#    mentions ports. Keeping the number identical on both sides makes
+#    "localhost:27018" true from the host and from inside the container alike.
+#
+# ---------------------------------------------------------------------------
+
+services:
+  mongo:
+    image: mongo:8.0
+    container_name: reelcms-mongo
+    restart: unless-stopped
+    # 27018 rather than the default 27017 so this never fights a locally
+    # installed mongod, or another demo app, for the port.
+    command: ["--replSet", "rs0", "--bind_ip_all", "--port", "27018"]
+    ports:
+      - "27018:27018"
+    volumes:
+      - reelcms-mongo-data:/data/db
+    healthcheck:
+      # Checks that the REPLICA SET is initiated, not merely that mongod answers.
+      # An un-initiated mongod accepts connections happily and then fails every
+      # write with NotWritablePrimary, so "port is open" is not health.
+      test:
+        - CMD
+        - mongosh
+        - --port
+        - "27018"
+        - --quiet
+        - --eval
+        - "try { rs.status().ok } catch (e) { 0 }"
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
+
+  # One-shot: initiates the replica set, then exits. Safe to re-run - rs.initiate()
+  # against an already-initiated set throws AlreadyInitialized, which we swallow.
+  mongo-init:
+    image: mongo:8.0
+    container_name: reelcms-mongo-init
+    depends_on:
+      mongo:
+        condition: service_started
+    restart: "no"
+    entrypoint:
+      - bash
+      - -c
+      - |
+        echo "waiting for mongod..."
+        until mongosh --host mongo --port 27018 --quiet --eval 'db.adminCommand("ping").ok' >/dev/null 2>&1; do
+          sleep 1
+        done
+        echo "initiating replica set rs0..."
+        mongosh --host mongo --port 27018 --quiet --eval '
+          try {
+            rs.initiate({
+              _id: "rs0",
+              // See the header comment: this string is what the driver reconnects
+              // to. "localhost:27018" is true from the host because the port is
+              // published 1:1, and true inside this container network too.
+              members: [{ _id: 0, host: "localhost:27018" }]
+            });
+            print("replica set initiated");
+          } catch (e) {
+            if (e.codeName === "AlreadyInitialized") { print("already initiated - ok"); }
+            else { throw e; }
+          }
+        '
+
+  # Optional web UI for poking at the data. Not needed to run the app.
+  #   docker compose --profile tools up -d
+  mongo-express:
+    image: mongo-express:1.0.2
+    container_name: reelcms-mongo-express
+    profiles: ["tools"]
+    restart: unless-stopped
+    depends_on:
+      mongo:
+        condition: service_healthy
+    ports:
+      - "8091:8081"
+    environment:
+      # directConnection=true skips replica-set discovery, so this container does
+      # not try to follow the advertised "localhost:27018" back to itself.
+      ME_CONFIG_MONGODB_URL: mongodb://mongo:27018/reelcms?directConnection=true
+      ME_CONFIG_BASICAUTH: "false"
+
+volumes:
+  reelcms-mongo-data:

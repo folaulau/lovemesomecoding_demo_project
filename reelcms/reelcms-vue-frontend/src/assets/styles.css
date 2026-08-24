@@ -1,0 +1,324 @@
+/*
+ * ReelCMS theme.
+ *
+ * Bootstrap 5.3 does the heavy lifting. Everything here is either a variable
+ * override (so Bootstrap's own components pick up the theme for free) or a
+ * component the framework has no equivalent for - the scroll-snap feed, mainly.
+ *
+ * The whole app runs in Bootstrap's dark mode via data-bs-theme="dark" on <html>,
+ * set in index.html. Doing it there rather than in JS avoids a flash of light
+ * theme on first paint.
+ */
+
+@import "bootstrap/dist/css/bootstrap.min.css";
+@import "bootstrap-icons/font/bootstrap-icons.css";
+
+:root,
+[data-bs-theme="dark"] {
+  /* Brand accent. Bootstrap builds buttons, links, focus rings and .text-primary
+     off --bs-primary-rgb, so overriding it here re-themes the whole framework. */
+  --bs-primary: #e0397f;
+  --bs-primary-rgb: 224, 57, 127;
+  --bs-link-color: #f06ba0;
+  --bs-link-hover-color: #f591bb;
+  --bs-link-color-rgb: 240, 107, 160;
+
+  --bs-body-bg: #0d0d12;
+  --bs-body-color: #e6e6ee;
+  --bs-secondary-color: rgba(230, 230, 238, 0.62);
+  --bs-tertiary-color: rgba(230, 230, 238, 0.42);
+  --bs-border-color: #262633;
+  --bs-emphasis-color: #ffffff;
+
+  --reel-surface: #15151f;
+  --reel-surface-2: #1c1c28;
+  --reel-accent-grad: linear-gradient(135deg, #7c3aed 0%, #e0397f 55%, #f97316 100%);
+  --reel-shadow: 0 8px 30px rgba(0, 0, 0, 0.45);
+}
+
+body {
+  background: var(--bs-body-bg);
+  -webkit-font-smoothing: antialiased;
+  font-family: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+/* ---------------------------------------------------------------- surfaces */
+
+.reel-surface {
+  background: var(--reel-surface);
+  border: 1px solid var(--bs-border-color);
+  border-radius: 0.9rem;
+}
+
+.reel-card {
+  background: var(--reel-surface);
+  border: 1px solid var(--bs-border-color);
+  border-radius: 0.9rem;
+  overflow: hidden;
+  transition: transform 0.16s ease, border-color 0.16s ease;
+}
+
+.reel-card:hover {
+  transform: translateY(-3px);
+  border-color: rgba(224, 57, 127, 0.55);
+}
+
+.reel-gradient-text {
+  background: var(--reel-accent-grad);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.reel-brand-dot {
+  width: 1.6rem;
+  height: 1.6rem;
+  border-radius: 0.5rem;
+  background: var(--reel-accent-grad);
+  display: inline-block;
+}
+
+/* ------------------------------------------------------------- the feed
+ *
+ * A full-viewport vertical pager: one reel per screen, snapping into place.
+ * scroll-snap-type on the scroller plus scroll-snap-align on each child is the
+ * entire mechanism - no JS, no scroll listener, no library.
+ *
+ * The height is 100dvh (dynamic viewport height), not 100vh. On mobile Safari
+ * 100vh is the height with the URL bar HIDDEN, so a 100vh pager is always
+ * slightly taller than what you can see and every snap point sits a few pixels
+ * off. dvh tracks the bar as it collapses.
+ */
+
+.feed-scroller {
+  height: 100dvh;
+  overflow-y: auto;
+  scroll-snap-type: y mandatory;
+  scrollbar-width: none;
+}
+
+.feed-scroller::-webkit-scrollbar {
+  display: none;
+}
+
+.feed-slide {
+  height: 100dvh;
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+
+/* The 9:16 stage. Capped by height so a tall desktop window does not stretch it. */
+.reel-stage {
+  position: relative;
+  height: min(88dvh, 780px);
+  aspect-ratio: 9 / 16;
+  max-width: 94vw;
+  border-radius: 1.1rem;
+  overflow: hidden;
+  background: #000;
+  box-shadow: var(--reel-shadow);
+}
+
+.reel-stage video,
+.reel-stage .reel-poster {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* Scrim behind the caption so white text survives a bright frame. */
+.reel-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  padding: 1.1rem;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.82) 0%, rgba(0, 0, 0, 0.28) 38%, transparent 62%);
+  pointer-events: none;
+}
+
+.reel-overlay a,
+.reel-overlay button {
+  pointer-events: auto;
+}
+
+/* Right-hand action rail: like / comment / share. */
+.reel-actions {
+  position: absolute;
+  right: 0.65rem;
+  bottom: 5.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.1rem;
+  align-items: center;
+}
+
+.reel-action-btn {
+  width: 2.9rem;
+  height: 2.9rem;
+  border-radius: 50%;
+  border: none;
+  background: rgba(20, 20, 28, 0.62);
+  backdrop-filter: blur(6px);
+  color: #fff;
+  font-size: 1.2rem;
+  display: grid;
+  place-items: center;
+  transition: transform 0.12s ease, background 0.12s ease;
+}
+
+.reel-action-btn:hover {
+  transform: scale(1.09);
+  background: rgba(224, 57, 127, 0.85);
+}
+
+.reel-action-btn.is-active {
+  background: var(--bs-primary);
+}
+
+.reel-action-count {
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-align: center;
+  margin-top: 0.2rem;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+}
+
+/* Thin progress bar pinned to the bottom of the stage. */
+.reel-progress {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 3px;
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.reel-progress > div {
+  height: 100%;
+  background: var(--bs-primary);
+  transition: width 0.15s linear;
+}
+
+/* ---------------------------------------------------------------- admin */
+
+.admin-sidebar {
+  width: 232px;
+  flex: 0 0 232px;
+  background: var(--reel-surface);
+  border-right: 1px solid var(--bs-border-color);
+  min-height: 100dvh;
+}
+
+.admin-nav-link {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.55rem 0.8rem;
+  border-radius: 0.55rem;
+  color: var(--bs-secondary-color);
+  text-decoration: none;
+  font-size: 0.92rem;
+  font-weight: 500;
+}
+
+.admin-nav-link:hover {
+  background: var(--reel-surface-2);
+  color: var(--bs-body-color);
+}
+
+/* `is-current` rather than router-link-active: see the NAV comment in
+   AdminLayout.vue for why the active class is set per-link. */
+.admin-nav-link.is-current {
+  background: rgba(224, 57, 127, 0.16);
+  color: #f591bb;
+}
+
+.stat-card {
+  background: var(--reel-surface);
+  border: 1px solid var(--bs-border-color);
+  border-radius: 0.9rem;
+  padding: 1.05rem 1.15rem;
+}
+
+.stat-card .stat-value {
+  font-size: 1.75rem;
+  font-weight: 700;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+
+.stat-card .stat-label {
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--bs-tertiary-color);
+}
+
+/* A value that just changed via the change stream flashes once. */
+@keyframes stat-flash {
+  from { color: #f591bb; transform: scale(1.05); }
+  to { color: inherit; transform: scale(1); }
+}
+
+.stat-value.is-live {
+  animation: stat-flash 0.6s ease-out;
+}
+
+.table > :not(caption) > * > * {
+  background: transparent;
+}
+
+.admin-thumb {
+  width: 44px;
+  height: 62px;
+  object-fit: cover;
+  border-radius: 0.35rem;
+  background: var(--reel-surface-2);
+  /* display:block + overflow:hidden so a poster that fails to load clips its alt
+     text instead of stretching the table row to fit it. */
+  display: block;
+  overflow: hidden;
+  font-size: 0;
+}
+
+/* --------------------------------------------------------------- misc */
+
+.tag-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.16rem 0.55rem;
+  border-radius: 999px;
+  background: var(--reel-surface-2);
+  border: 1px solid var(--bs-border-color);
+  font-size: 0.78rem;
+  color: var(--bs-secondary-color);
+  text-decoration: none;
+}
+
+a.tag-chip:hover {
+  border-color: rgba(224, 57, 127, 0.6);
+  color: #f591bb;
+}
+
+.avatar {
+  border-radius: 50%;
+  object-fit: cover;
+  background: var(--reel-surface-2);
+}
+
+.cursor-pointer {
+  cursor: pointer;
+}
+
+.text-tabular {
+  font-variant-numeric: tabular-nums;
+}
