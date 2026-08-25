@@ -8,7 +8,7 @@ schema. `Depends(require_host)` on a route is both the enforcement and the docum
 from typing import Annotated
 
 from fastapi import Depends, Request
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer, OAuth2PasswordBearer
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -25,15 +25,37 @@ from app.models.user import User
 # core/exceptions.py — one error parser, not two.
 bearer_scheme = HTTPBearer(auto_error=False)
 
+# The same header, declared a second way. Both of these read `Authorization: Bearer <token>` and
+# neither does anything else — the difference is entirely in the OpenAPI document, and therefore
+# entirely in what `/docs` offers a human.
+#
+# `OAuth2PasswordBearer` names a token endpoint, so Swagger UI grows an `Authorize` button with a
+# username and password form and fetches a token itself. `HTTPBearer` has nowhere to send you, so
+# the button only takes a token you already have. Declaring both means the button works AND the
+# two React apps' `Authorization` header keeps being described accurately.
+#
+# ⚠️ `tokenUrl` is a promise. Swagger posts form-encoded `username`/`password` to whatever is
+# named here, so the endpoint has to exist and take that exact shape — see `POST /auth/token`.
+# Point it at `/auth/login`, which takes JSON, and the button fails with a 422 that looks like a
+# broken docs page.
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/v1/auth/token", auto_error=False)
+
 DbSession = Annotated[Session, Depends(get_db)]
 Credentials = Annotated[HTTPAuthorizationCredentials | None, Depends(bearer_scheme)]
+OAuth2Token = Annotated[str | None, Depends(oauth2_scheme)]
 
 
-def get_current_user(db: DbSession, credentials: Credentials) -> User:
-    if credentials is None:
+def _token_from(credentials: HTTPAuthorizationCredentials | None, fallback: str | None):
+    """One header, two declarations — take whichever of them parsed it."""
+    return credentials.credentials if credentials else fallback
+
+
+def get_current_user(db: DbSession, credentials: Credentials, token: OAuth2Token) -> User:
+    raw = _token_from(credentials, token)
+    if raw is None:
         raise UnauthorizedException("Sign in to continue.")
 
-    claims = decode_access_token(credentials.credentials)
+    claims = decode_access_token(raw)
     if claims is None or not claims.get("sub"):
         raise UnauthorizedException("Your session has expired. Please sign in again.")
 
@@ -49,15 +71,16 @@ def get_current_user(db: DbSession, credentials: Credentials) -> User:
     return user
 
 
-def get_optional_user(db: DbSession, credentials: Credentials) -> User | None:
+def get_optional_user(db: DbSession, credentials: Credentials, token: OAuth2Token) -> User | None:
     """For routes that behave differently when signed in but do not require it.
 
     An invalid token here is treated as "anonymous", not as an error — a stale token in
     localStorage should not stop someone browsing listings.
     """
-    if credentials is None:
+    raw = _token_from(credentials, token)
+    if raw is None:
         return None
-    claims = decode_access_token(credentials.credentials)
+    claims = decode_access_token(raw)
     if claims is None or not claims.get("sub"):
         return None
     return db.execute(

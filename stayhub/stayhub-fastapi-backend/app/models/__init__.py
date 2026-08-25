@@ -6,6 +6,7 @@ is invisible to that metadata, and autogenerate cheerfully writes a migration th
 
 from app.db.base import Base
 from app.models.booking import Booking, Payment, Review
+from app.models.oauth_account import OAuthAccount
 from app.models.outbox import OutboxMessage
 from app.models.property import Amenity, Property, PropertyImage, property_amenities
 from app.models.user import User
@@ -13,6 +14,7 @@ from app.models.user import User
 __all__ = [
     "Base",
     "User",
+    "OAuthAccount",
     "OutboxMessage",
     "Property",
     "PropertyImage",

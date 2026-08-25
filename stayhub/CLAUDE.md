@@ -62,7 +62,8 @@ FastAPI, SQLAlchemy 2.0 (typed ORM), Alembic, Postgres.
 
 ```
 app/
-├── core/          config · security (JWT + bcrypt) · deps · exceptions · logging · middleware
+├── core/          config · security (JWT + bcrypt) · oauth (code flow + PKCE) · deps
+│                  exceptions · logging · middleware
 │                  cache (Redis, cache-aside) · rate_limit (token bucket in Lua)
 ├── db/            base (mixins) · session · async_session
 ├── models/        SQLAlchemy entities + enums
@@ -70,7 +71,7 @@ app/
 ├── repositories/  the ONLY place that knows SQLAlchemy exists
 ├── services/      business rules — pricing, booking, cancellation policy, payments, notifications
 ├── search/        client · index mapping · indexer (the Postgres → ES sink) · queries
-└── api/v1/routes/ auth · properties · bookings · payments · search · admin · uploads
+└── api/v1/routes/ auth · oauth · properties · bookings · payments · search · admin · uploads
 ```
 
 **Running it in a container** (added 2026-08-21, for the `/fastapi` tutorial track):
@@ -105,8 +106,13 @@ Three things went in, and the rule they share is more important than any of them
 ⚠️ **All three are OPTIONAL, and that is the design.** `docker compose stop redis` and the app
 serves every page, passes every test that does not test Redis itself, and logs one warning rather
 than one per request. The cache treats an outage as a permanent miss; the rate limiter fails OPEN
-(a Redis outage must not take down login). Verified both ways on 2026-08-22: **165 tests pass with
-Redis up, 142 pass and 23 skip with it stopped, zero fail either way.**
+(a Redis outage must not take down login). Re-verified 2026-08-25: **237 tests pass with Redis up,
+190 pass and 47 skip with it stopped, zero fail either way.**
+
+⚠️ **`core/oauth.py` is the exception: its state store fails CLOSED.** A missing cache entry costs
+a database read; a missing `state` means an authorisation we issued cannot be told from one that
+was forged, and the only safe answer to "I cannot verify this" is to refuse. Fail open for
+optimisations, fail closed for decisions.
 
 ⚠️ **The booking emails moved off `BackgroundTasks` onto the outbox.** `notification_service.py`
 still documents what `BackgroundTasks` is and is still the best explanation of it in this repo —
@@ -117,6 +123,27 @@ Delivery is at-least-once by nature, so both handlers must stay idempotent.
 `@outbox_service.handles(...)` at import time, so a module nobody imports has no topics — and the
 symptom is not a crash, it is `No handler for outbox topic 'booking.created'` on a valid message,
 forever. `scripts/drain_outbox.py` imports them explicitly and `--list-topics` shows the registry.
+
+**OAuth2 sign-in with a provider** (added 2026-08-25, for the `/fastapi` tutorial track):
+
+```bash
+STAYHUB_OAUTH_GOOGLE_CLIENT_ID=… STAYHUB_OAUTH_GOOGLE_CLIENT_SECRET=… uvicorn app.main:app
+GET /api/v1/auth/oauth/google/authorize?next=/trips     # 307 to the consent screen
+GET /api/v1/auth/oauth/google/callback?code=…&state=…   # 307 back, token in the #fragment
+POST /api/v1/auth/token                                 # the password grant, form-encoded
+```
+
+The authorization code flow with PKCE, plus the token endpoint that makes the **Authorize** button
+on `/docs` work. Google and GitHub are configured; a provider is switched on by supplying
+credentials, not by a flag. `tests/test_oauth.py` runs the whole flow with `httpx.MockTransport`,
+so no network and no credentials are needed.
+
+⚠️ **`/auth/login` (JSON, `email`) and `/auth/token` (form, `username`) both exist and that is not
+duplication.** The spec fixes the second shape and Swagger will not use any other; the two React
+apps want the first. One `AuthService.login` behind both.
+
+⚠️ **The provider's access token is never handed to a frontend and never stored.** It is a key to
+that provider's API, used once to read a profile, then dropped. StayHub mints its own JWT.
 
 **Search — the Elasticsearch surface** (extended 2026-08-22, for the `/elasticsearch` tutorial track):
 
@@ -221,6 +248,21 @@ page reads — that is a value, not a state machine. Apollo's cache is the serve
   it with no proxy in front lets anyone mint a fresh rate-limit bucket per request and turn the
   limiter off. `rate_limit.TRUSTED_PROXY_COUNT` is 0 locally; when it is not, hops are counted
   from the RIGHT, because only the rightmost entries were appended by infrastructure we control.
+- **An OAuth2 identity is linked by `(provider, sub)`, never by email, and only when the provider
+  says `email_verified`.** Both halves are account takeover. Matching on an unverified address lets
+  anyone register at a provider using a StayHub user's email and be handed their account; matching
+  on email at all means a reassigned address hands the new holder the old holder's bookings. The
+  unique constraint is on the PAIR — `sub` is only unique within one provider.
+- **`state` is mandatory and single-use, and `next` is forced to a path.** Without `state`, an
+  attacker's own authorization code, fed to a victim's callback, signs the victim in AS the
+  attacker. `consume()` uses `GETDEL` so two simultaneous callbacks cannot both spend one state.
+  An unchecked `next` is an open redirect through a genuine StayHub URL and a genuine consent
+  screen — and `startswith("/")` alone lets `//evil.example` through.
+- **The token comes back in the URL FRAGMENT, never the query string.** A fragment is not sent to
+  any server, so it stays out of access logs and `Referer` headers.
+- **An OAuth-created account gets a RANDOM password hash, not a sentinel.** passlib raises on a
+  hash it cannot identify, so `""` or `"!"` turns `POST /auth/login` on that address into a 500
+  that anyone who guesses the address can trigger.
 - **Uploads are validated by their BYTES, not their `Content-Type`.** That header is whatever the
   client typed. `app/api/v1/routes/uploads.py` sniffs the magic bytes and requires them to match
   the declared type, generates the stored filename rather than trusting `file.filename`, and caps
@@ -299,7 +341,7 @@ production.
 ## Test
 
 ```bash
-cd stayhub-fastapi-backend && .venv/bin/python -m pytest -q      # 165 — needs Postgres; 23 need Redis
+cd stayhub-fastapi-backend && .venv/bin/python -m pytest -q      # 237 — needs Postgres; 47 need Redis
 cd stayhub-react-frontend && npm run test:e2e                    # 33 — needs everything running
 cd stayhub-react-admin-frontend && npm run test:e2e              #  7
 npm run screenshots                                              # regenerate screenshots/

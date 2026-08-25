@@ -3,8 +3,51 @@
 Shared context for the StayHub demo (Airbnb-style short-term rentals).
 **Read this first when resuming work.**
 
-**Status:** Complete and working end to end, Stripe included. **193 backend + 33 customer + 7 admin tests, all green.**
-**Last updated:** 2026-08-22
+**Status:** Complete and working end to end, Stripe included. **237 backend + 33 customer + 7 admin tests, all green.**
+**Last updated:** 2026-08-25
+
+---
+
+## OAuth2 sign-in — 2026-08-25
+
+Built for the `/fastapi` tutorial track, which needed a real authorization code flow to quote.
+Nothing here existed before: lesson 9 of that track mentioned `OAuth2PasswordBearer` only to
+explain why StayHub did *not* use it.
+
+**What went in.** `core/oauth.py` (providers, PKCE, the state store, code exchange, userinfo),
+`services/oauth_service.py` (link-or-create), `api/v1/routes/oauth.py` (`/authorize`,
+`/callback`), `models/oauth_account.py` + its migration, `POST /auth/token` with
+`OAuth2PasswordRequestForm`, and `oauth2_scheme` in `core/deps.py` so the **Authorize** button on
+`/docs` works. 44 tests, no network.
+
+**Four decisions worth keeping.**
+
+1. **The state store fails CLOSED**, alone among the things here that touch Redis. The cache
+   treats an outage as a miss and the rate limiter allows the request; both are right, because an
+   optimisation that can take the site down has stopped being an optimisation. A missing `state`
+   is different in kind: it means an authorisation we issued cannot be told from a forged one.
+   Fail open for optimisations, fail closed for decisions.
+2. **`GETDEL`, not `GET` then `DEL`.** Two round trips let two simultaneous callbacks both read
+   the state before either deletes it, so one authorisation authorises two logins — the exact
+   replay `state` exists to stop.
+3. **`email_verified` gates the link to an existing account.** Without it, registering at a
+   provider on somebody's address hands you their StayHub account. Refusing outright rather than
+   creating a second account is also deliberate: a duplicate unverified row on an address that
+   already belongs to someone produces a support ticket with no good answer.
+4. **An OAuth-created account gets a random password hash**, not `""` or `"!"`. passlib raises on
+   a hash it cannot identify, so a sentinel turns `POST /auth/login` on that address into a 500
+   reachable by anyone who guesses it.
+
+**Each of those was confirmed by reintroducing the bug.** Dropping the `email_verified` check,
+turning `GETDEL` back into `GET`, passing `next` through unchecked and leaving base64 padding on
+the PKCE challenge each failed exactly two tests and nothing else.
+
+**The Redis invariant had to be re-established, not assumed.** The first version of the test file
+broke it: an autouse cleanup fixture called Redis unconditionally, and `redis-py` connects lazily,
+so `cache._client()` returning non-None says nothing about whether a server is listening. With
+Redis stopped that turned cleanup into an error on all 25 tests in the file, including four that
+never touch it. Now: **237 pass with Redis up, 190 pass and 47 skip with it stopped, zero fail
+either way.**
 
 ---
 

@@ -92,6 +92,31 @@ class Settings(BaseSettings):
     max_upload_bytes: int = 5 * 1024 * 1024
     upload_dir: str = "uploads"
 
+    # ---------------------------------------------------------------------
+    # OAuth2 sign-in with a provider
+    # ---------------------------------------------------------------------
+    # Empty by default, and `get_provider` raises when they are. A provider is switched ON by
+    # supplying credentials, not by a feature flag — one source of truth instead of a flag and a
+    # secret that can disagree.
+    oauth_google_client_id: str = ""
+    oauth_google_client_secret: str = ""
+    oauth_github_client_id: str = ""
+    oauth_github_client_secret: str = ""
+
+    # ⚠️ The base the redirect_uri is BUILT from, and it must match what is registered in the
+    # provider's console character for character — scheme, host, port, path, trailing slash.
+    # Google compares the string, not the URL: http vs https, or a stray slash, is
+    # `redirect_uri_mismatch` and nothing else. Deriving it from the request's Host header instead
+    # would follow whatever a proxy put there. See `oauth.redirect_uri_for`.
+    oauth_redirect_base: str = "http://localhost:8000"
+
+    # Where the callback sends the browser once StayHub has minted its own token.
+    oauth_success_redirect: str = "http://localhost:5174/auth/callback"
+
+    # How long someone has to finish signing in at the provider. Ten minutes is generous for a
+    # consent screen and short enough that an abandoned `state` is not sitting in Redis for hours.
+    oauth_state_ttl_seconds: int = 600
+
     stripe_secret_key: str = ""
     stripe_webhook_secret: str = ""
     # Public by design — it identifies the account and can only create payment attempts, never

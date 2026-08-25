@@ -1,4 +1,7 @@
-from fastapi import APIRouter, status
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, status
+from fastapi.security import OAuth2PasswordRequestForm
 
 from app.core.deps import CurrentUser, DbSession, LoginRateLimit
 from app.schemas.user import (
@@ -31,6 +34,34 @@ def login(payload: UserLoginRequest, db: DbSession) -> AuthResponse:
     taking the limit with it.
     """
     return AuthService(db).login(payload.email, payload.password)
+
+
+@router.post("/token", response_model=AuthResponse, dependencies=[LoginRateLimit])
+def token(
+    form: Annotated[OAuth2PasswordRequestForm, Depends()], db: DbSession
+) -> AuthResponse:
+    """The same sign-in as `/login`, in the shape OAuth2 specifies. Both are supported.
+
+    This exists so the `Authorize` button on `/docs` works. `OAuth2PasswordBearer` in
+    `core/deps.py` names this URL as its `tokenUrl`, and Swagger UI posts to it — but only in the
+    exact form the spec describes: `application/x-www-form-urlencoded`, with the fields named
+    `username` and `password`. `/login` takes JSON with an `email` field, because its callers are
+    two React apps, so the button could never have worked against it.
+
+    ⚠️ `username` carries an email here. The field name is fixed by the spec and cannot be
+    renamed; `OAuth2PasswordRequestForm` is a dependency, not a Pydantic model, so there is no
+    alias to set. Document it and move on.
+
+    ⚠️ Form parsing needs `python-multipart` installed. Without it FastAPI raises at IMPORT time
+    with "Form data requires python-multipart to be installed" — the whole app refuses to start
+    over one endpoint, which is at least a loud failure rather than a quiet one.
+
+    On the flow itself: this is OAuth2's *password grant*, and OAuth 2.1 removes it. It requires
+    the client to handle the password, which is precisely what the rest of OAuth2 exists to avoid.
+    It is fine for a first-party login on your own server — this one — and wrong for anything
+    third-party, which is what `/auth/oauth/{provider}` is for.
+    """
+    return AuthService(db).login(form.username, form.password)
 
 
 @router.get("/me", response_model=UserResponse)
