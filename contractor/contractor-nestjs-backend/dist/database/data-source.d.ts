@@ -1,0 +1,13 @@
+import { DataSource } from 'typeorm';
+import type { DataSourceOptions } from 'typeorm';
+import { ContractorProfile } from './entities/contractor-profile.entity.js';
+import { PortfolioImage } from './entities/portfolio-image.entity.js';
+import { Project } from './entities/project.entity.js';
+import { Quote } from './entities/quote.entity.js';
+import { Review } from './entities/review.entity.js';
+import { ServiceCategory } from './entities/service-category.entity.js';
+import { User } from './entities/user.entity.js';
+export declare const ENTITIES: (typeof PortfolioImage | typeof ContractorProfile | typeof User | typeof Review | typeof Project | typeof ServiceCategory | typeof Quote)[];
+export declare function buildDataSourceOptions(): DataSourceOptions;
+declare const _default: DataSource;
+export default _default;
