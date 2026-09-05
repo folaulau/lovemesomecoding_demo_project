@@ -1,0 +1,122 @@
+# Backing services for Contractor.
+#
+# Every port here is shifted off its default because this machine already runs the defaults, and
+# because the other demo projects in this repo got there first:
+#   Postgres   5434   (5432 is a native install, 5433 is StayHub)
+#   Hasura     8083   (8080 is a Java app, 8081 is StayHub, 8082 is a node process)
+#
+# The app itself (NestJS, the React app) is NOT in here — it runs from a terminal so it reloads on
+# save. Compose owns only the things that would be a pain to install natively.
+#
+#   docker compose up -d          # postgres + hasura
+#   docker compose down           # stop
+#   docker compose down -v        # stop AND wipe the data
+#
+# ---------------------------------------------------------------------------------------------
+# CREDENTIALS — all of them, in one place
+# ---------------------------------------------------------------------------------------------
+#
+# | Service        | URL                              | Username   | Password / secret        |
+# |----------------|----------------------------------|------------|--------------------------|
+# | Postgres       | localhost:5434  db `contractor`  | contractor | contractor               |
+# | Hasura console | http://localhost:8083            | —          | contractor-admin-secret  |
+#
+# Connection strings, ready to paste:
+#
+#   psql          psql "postgresql://contractor:contractor@localhost:5434/contractor"
+#   TypeORM       postgres://contractor:contractor@localhost:5434/contractor
+#   Hasura API    curl -H "x-hasura-admin-secret: contractor-admin-secret" \
+#                      http://localhost:8083/v1/graphql
+#
+# Note: `docker exec contractor-postgres psql -U contractor -d contractor` needs NO password, and
+# that is not a misconfiguration — the image trusts connections originating inside the container.
+# Over the published port on 5434, which is how the app and every tool on your machine connect,
+# the password IS enforced: a wrong one is refused.
+#
+# The APP's own logins are seeded by `contractor-nestjs-backend/src/scripts/seed.ts`, NOT by
+# anything here — the two above are infrastructure accounts.
+#
+# ⚠️ Every credential here is a throwaway local fixture, checked in ON PURPOSE so the demo runs
+# with one command. That is the ONLY reason it is acceptable to have them in a committed file.
+
+name: contractor
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: contractor-postgres
+    restart: unless-stopped
+    environment:
+      # Username, password and database are all `contractor` — deliberately boring, so the
+      # connection string is memorable and nobody is tempted to write it down elsewhere.
+      #
+      #   host   localhost      port 5434   (5432 INSIDE the compose network — see hasura below)
+      #   user   contractor
+      #   pass   contractor
+      #   db     contractor
+      #
+      # In production these come from a secret store and the password is not the username.
+      POSTGRES_USER: contractor
+      POSTGRES_PASSWORD: contractor
+      POSTGRES_DB: contractor
+    ports:
+      - "5434:5432"
+    volumes:
+      - contractor-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      # `pg_isready` ships in the image. Health-check with a command the container actually has —
+      # a curl-based check on an image without curl reports unhealthy forever while the service
+      # serves happily, and `up --wait` then blames the wrong thing.
+      test: ["CMD-SHELL", "pg_isready -U contractor -d contractor"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  hasura:
+    image: hasura/graphql-engine:v2.42.0
+    container_name: contractor-hasura
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8083:8080"
+    environment:
+      # ⚠️ Inside the compose network Postgres is on its OWN port, 5432. The 5434 shift is a
+      # host-side publish only. Using 5434 here is a classic and confusing failure.
+      HASURA_GRAPHQL_DATABASE_URL: postgres://contractor:contractor@postgres:5432/contractor
+      HASURA_GRAPHQL_ENABLE_CONSOLE: "true"
+      HASURA_GRAPHQL_DEV_MODE: "true"
+      HASURA_GRAPHQL_ENABLED_LOG_TYPES: startup, http-log, webhook-log, websocket-log, query-log
+
+      # ⚠️ The admin secret. There is no username — this single value IS the credential, and it is
+      # what the console at http://localhost:8083 asks for. It grants the built-in `admin` role,
+      # which bypasses EVERY permission rule in hasura/metadata.
+      #
+      # It belongs in scripts and in the console. It must NEVER reach a browser bundle — that
+      # would hand every visitor unrestricted access to every table. The React app sends a JWT
+      # instead; grep for this string under contractor-react-frontend/src and you will find nothing.
+      HASURA_GRAPHQL_ADMIN_SECRET: contractor-admin-secret
+
+      # The other half of the auth story. NestJS SIGNS a JWT with this secret; Hasura VERIFIES it
+      # with the same one and reads the `https://hasura.io/jwt/claims` object out of the payload
+      # to decide which permission rules apply. One login, two APIs, no auth webhook.
+      #
+      # ⚠️ HS256 is a SHARED secret, so anyone holding it can mint a token claiming any role.
+      # That is fine for a local demo and wrong in production, where this becomes RS256 and Hasura
+      # gets only the public half (`jwk_url` or `key`).
+      #
+      # ⚠️ This value must match CONTRACTOR_JWT_SECRET in contractor-nestjs-backend/.env exactly.
+      # A mismatch does not fail loudly at startup — every GraphQL request just comes back
+      # "Could not verify JWT: JWSError JWSInvalidSignature", which reads like a client bug.
+      HASURA_GRAPHQL_JWT_SECRET: >-
+        {"type":"HS256","key":"contractor-dev-jwt-secret-change-me-in-production-0123456789"}
+
+      # An unauthenticated request gets the `anonymous` role rather than being rejected outright.
+      # The public contractor directory and the service categories are readable without an
+      # account — that is a product decision (Thumbtack lets you browse before you sign up), and
+      # it is enforced by `anonymous` having SELECT on exactly those tables and nothing else.
+      HASURA_GRAPHQL_UNAUTHORIZED_ROLE: anonymous
+
+volumes:
+  contractor-pgdata:

@@ -1,0 +1,59 @@
+/* Tailwind v4: one import replaces the three v3 directives (@tailwind base/components/utilities). */
+@import 'tailwindcss';
+
+/*
+ * Design tokens.
+ *
+ * In v4 the theme IS css. Every entry here becomes both a CSS variable and a utility class, so
+ * `--color-brand-600` gives you `bg-brand-600`, `text-brand-600`, `border-brand-600` and so on.
+ * That is why this project has no `tailwind.config.js` — there is nothing left to put in it.
+ *
+ * The palette is deliberately teal + amber. The other demo apps in this repo are coral (StayHub
+ * guests), indigo (StayHub admin) and red (pizza); a shared look across projects makes it easy to
+ * lose track of which app a screenshot came from.
+ */
+@theme {
+  --color-brand-50: #f0fdfa;
+  --color-brand-100: #ccfbf1;
+  --color-brand-200: #99f6e4;
+  --color-brand-300: #5eead4;
+  --color-brand-400: #2dd4bf;
+  --color-brand-500: #14b8a6;
+  --color-brand-600: #0d9488;
+  --color-brand-700: #0f766e;
+  --color-brand-800: #115e59;
+  --color-brand-900: #134e4a;
+
+  --color-accent-50: #fffbeb;
+  --color-accent-100: #fef3c7;
+  --color-accent-200: #fde68a;
+  --color-accent-400: #fbbf24;
+  --color-accent-500: #f59e0b;
+  --color-accent-600: #d97706;
+  --color-accent-700: #b45309;
+
+  --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+
+/*
+ * `@layer base` matters here rather than a bare rule: base styles must lose to utilities, so
+ * `<h1 class="text-sm">` still wins. A bare `h1 { }` at the top level has the same specificity as
+ * a utility class and the winner then depends on source order, which is not something anyone
+ * should have to reason about.
+ */
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply bg-slate-50 text-slate-900 antialiased;
+  }
+
+  /* A visible focus ring on keyboard navigation only. Removing the outline entirely is the single
+     most common accessibility regression in a Tailwind project — `:focus-visible` keeps it for
+     keyboard users and drops it for mouse clicks, which is what people actually want. */
+  :focus-visible {
+    @apply outline-2 outline-offset-2 outline-brand-600;
+  }
+}

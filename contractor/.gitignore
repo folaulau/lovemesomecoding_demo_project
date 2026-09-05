@@ -1,0 +1,30 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+.vite/
+
+# Uploaded portfolio images — user content, never committed.
+contractor-nestjs-backend/uploads/
+
+# Local environment overrides. `.env.example` in each app documents the variables;
+# the real values stay out of git.
+.env
+.env.local
+.env.*.local
+
+# Test artefacts
+test-results/
+playwright-report/
+.playwright/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Editors and OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
