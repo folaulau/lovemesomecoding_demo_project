@@ -22,6 +22,7 @@ import { DataSource } from 'typeorm'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { AppModule } from '../src/app.module.js'
+import { TrimPipe } from '../src/common/pipes/trim.pipe.js'
 import { ProjectStatus, QuoteStatus } from '../src/common/enums.js'
 
 /** Every project this file creates carries this prefix, so cleanup can find them all. */
@@ -47,10 +48,16 @@ describe('business rules', () => {
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile()
     app = moduleRef.createNestApplication()
 
-    // ⚠️ The SAME pipe configuration as main.ts. Without it the DTO decorators are inert and every
-    // validation assertion below passes vacuously — a test suite that proves nothing while looking
-    // thorough.
+    // ⚠️ The SAME pipe configuration as main.ts, in the SAME order. Without it the DTO decorators
+    // are inert and every validation assertion below passes vacuously — a test suite that proves
+    // nothing while looking thorough.
+    //
+    // ⚠️ Only the PIPES are repeated. The global exception filter and logging interceptor are
+    // bound with APP_FILTER / APP_INTERCEPTOR inside AppModule, so importing the module brings
+    // them along — see the note in app.module.ts. Pipes registered on the app instance cannot
+    // work that way, which is the whole reason this block has to exist.
     app.useGlobalPipes(
+      new TrimPipe(),
       new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }),
     )
     await app.init()

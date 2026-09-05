@@ -6,6 +6,7 @@ import { NestFactory } from '@nestjs/core'
 import type { NestExpressApplication } from '@nestjs/platform-express'
 
 import { AppModule } from './app.module.js'
+import { TrimPipe } from './common/pipes/trim.pipe.js'
 import type { AppConfig } from './config/configuration.js'
 
 async function bootstrap() {
@@ -20,6 +21,13 @@ async function bootstrap() {
    * pipe is completely unvalidated, and nothing about it looks wrong.
    */
   app.useGlobalPipes(
+    /**
+     * ⚠️ BEFORE the ValidationPipe, and the order is load-bearing. Nest runs global pipes left to
+     * right, so this hands a trimmed body to the validator — which is what makes `@Length(1, 80)`
+     * reject three spaces instead of passing them and letting the service store `""`.
+     * See trim.pipe.ts.
+     */
+    new TrimPipe(),
     new ValidationPipe({
       // Strips properties with no decorator. A request carrying `{"role":"admin"}` at a DTO that
       // has no `role` field arrives at the service without it.

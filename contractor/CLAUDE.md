@@ -220,12 +220,14 @@ contractor/
 │   └── apply.mjs                 node hasura/apply.mjs [--check]
 ├── contractor-nestjs-backend/
 │   ├── src/common/               enums · guards · decorators · serializers
+│   │                             middleware/ · interceptors/ · filters/ · pipes/
 │   ├── src/config/               every env var, parsed and typed, in one place
 │   ├── src/database/             entities · data-source · migrations
 │   ├── src/auth/                 register, login, the JWT with its Hasura claims
 │   ├── src/{projects,quotes,reviews,contractors}/    one module per rule cluster
 │   ├── src/scripts/seed.ts       the demo dataset
-│   └── test/rules.e2e-spec.ts    the seven rules
+│   ├── src/**/*.spec.ts          unit tests — no database, `npm test`
+│   └── test/rules.e2e-spec.ts    the seven rules — needs Postgres, `npm run test:e2e`
 └── contractor-react-frontend/
     ├── src/api/                  client.ts (the seam) · queries.ts (GraphQL + mappers)
     ├── src/lib/                  apollo · auth · config · format · useAsync
@@ -237,6 +239,18 @@ contractor/
 **`src/api/client.ts` is the seam.** Every screen reads and writes through it and knows nothing
 about where the data comes from. The app was built against an in-memory mock with exactly these
 signatures; swapping in Hasura and NestJS changed that one file and no components.
+
+**The global request pipeline**, outermost first — added 2026-09-05:
+
+| | Where it is bound | Why there |
+|---|---|---|
+| `RequestIdMiddleware` | `AppModule.configure()` | Runs BEFORE guards, so a 401 still carries an id. There is no `APP_MIDDLEWARE` token. |
+| `LoggingInterceptor` | `APP_INTERCEPTOR` provider | Needs the outcome — status, duration, whether it threw — which only an interceptor can see. |
+| `TrimPipe`, `ValidationPipe` | `main.ts`, in that order | Global pipes run left to right. Trimming first is what makes `@Length(1, 80)` reject `"   "` instead of letting the service store `""`. |
+| `AllExceptionsFilter` | `APP_FILTER` provider | Turns a `QueryFailedError` into a 409 rather than a 500, and adds the request id to every error body. It ADDS to Nest's body — `message` keeps its shape, string or array. |
+
+⚠️ The two bound as providers are picked up by `Test.createTestingModule({ imports: [AppModule] })`
+automatically. The pipes are not, which is why `rules.e2e-spec.ts` still repeats them by hand.
 
 **Layer rules, in priority order:**
 - **Services own the rules; controllers own HTTP.** A controller that decides who may do something
