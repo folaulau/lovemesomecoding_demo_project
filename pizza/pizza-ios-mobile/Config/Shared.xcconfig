@@ -6,9 +6,15 @@
 // accident and nobody notices for a month.
 
 PRODUCT_BUNDLE_IDENTIFIER = com.lovemesomecoding.pizza.ios
-PRODUCT_NAME = StayHub Pizza
 MARKETING_VERSION = 1.0.0
 CURRENT_PROJECT_VERSION = 1
+
+// PRODUCT_NAME is deliberately NOT set here.
+//
+// An .xcconfig assigned at the PROJECT level applies to every target, and PRODUCT_NAME is what the
+// Swift module name derives from. Setting it here gave the app and the test bundle the same module
+// name, and the build then failed with four "Multiple commands produce …StayHub_Pizza.swiftmodule"
+// errors that name the symptom and not the cause. It belongs on the target — see project.yml.
 
 IPHONEOS_DEPLOYMENT_TARGET = 17.0
 SWIFT_VERSION = 5.0

@@ -3,6 +3,34 @@
 <plist version="1.0">
 <dict>
 	<!--
+	  The standard bundle keys.
+
+	  Xcode synthesises these when a target has no Info.plist of its own (GENERATE_INFOPLIST_FILE).
+	  This target supplies one, so it owns ALL of them — and the failure mode for omitting them is
+	  not a build error: the app compiles, links and signs, and then the simulator refuses to
+	  install it with "The application's Info.plist does not contain a valid CFBundleVersion".
+
+	  Every value is a build-setting substitution, so the version lives in Config/Shared.xcconfig
+	  and is not duplicated here.
+	-->
+	<key>CFBundleDevelopmentRegion</key>
+	<string>$(DEVELOPMENT_LANGUAGE)</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>$(PRODUCT_NAME)</string>
+	<key>CFBundlePackageType</key>
+	<string>$(PRODUCT_BUNDLE_PACKAGE_TYPE)</string>
+	<key>CFBundleShortVersionString</key>
+	<string>$(MARKETING_VERSION)</string>
+	<key>CFBundleVersion</key>
+	<string>$(CURRENT_PROJECT_VERSION)</string>
+
+	<!--
 	  Build settings, surfaced to the app.
 
 	  `$(PIZZA_API_BASE_URL)` is substituted at build time from the active .xcconfig, so the same

@@ -8,6 +8,8 @@ against `pizza-react-frontend` purely "native vs browser" rather than "different
 It exists to be **read**. Where a "real production" choice and a "clear teaching example" choice
 conflict, the teaching one wins and a comment says what production would do differently.
 
+<img src="screenshots/home.png" alt="The home screen, running on an iPhone 15 simulator against the live API" width="280">
+
 ---
 
 ## Running it
@@ -95,7 +97,7 @@ xcodebuild test -project Pizza.xcodeproj -scheme Pizza \
     -destination 'platform=iOS Simulator,name=iPhone 15'
 ```
 
-130 XCTest cases across 20 suites, covering the pure domain (money, pricing, the cart reducer, form
+**130 of 130 passing** in 0.65s, across 20 suites, covering the pure domain (money, pricing, the cart reducer, form
 validation), the networking layer (through a real `URLSession` with a stubbed `URLProtocol`, so the
 assertions are about the bytes that would actually be sent), the persistence layer, and every store
 and view model against hand-written doubles.
@@ -149,6 +151,32 @@ swiftlint
 ```
 
 ---
+
+## ⚠️ Xcode 15.4 cannot compile asset catalogues on macOS 26
+
+On this machine — Xcode 15.4, macOS 26 (Darwin 25.2) — **every** asset catalogue fails to compile:
+
+```
+error: Failed to launch AssetCatalogSimulatorAgent via CoreSimulator spawn
+    Description: AssetCatalogSimulatorAgent exited before we could handshake
+```
+
+`actool` compiles asset catalogues by spawning a helper *inside* a simulator runtime, and this
+Xcode's CoreSimulator cannot spawn a host binary on this macOS — `xcrun simctl spawn booted <host
+binary>` fails on its own with `LaunchdSimError 153`. It is not specific to this project: it hits
+the app's own catalogue and all three of Stripe's, on the simulator SDK *and* the device SDK.
+
+**Updating Xcode is the fix.** Until then, everything except asset compilation works, which is
+enough to run the app and the tests:
+
+```bash
+# Temporarily drop the asset catalogue and the Stripe package, then build and run.
+# The app falls back to a default icon; StripePaymentGateway takes its #if canImport else-branch
+# and checkout renders its "Stripe SDK is not linked" copy.
+```
+
+The 130 tests and the screenshot above were produced that way. The committed configuration is the
+correct one and is left intact.
 
 ## Known gaps, stated rather than hidden
 

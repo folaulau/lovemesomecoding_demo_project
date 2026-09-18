@@ -57,6 +57,13 @@ targets:
     settings:
       base:
         INFOPLIST_FILE: Pizza/Resources/Info.plist
+        # The name on the home screen. Per-target, never in the shared .xcconfig — see the comment
+        # in Config/Shared.xcconfig for what happens when it is not.
+        PRODUCT_NAME: StayHub Pizza
+        # The SWIFT module name, which would otherwise be derived from PRODUCT_NAME as
+        # "StayHub_Pizza". The tests say `@testable import Pizza`, and a reader would reasonably
+        # expect the module to be named after the app rather than after its marketing title.
+        PRODUCT_MODULE_NAME: Pizza
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
         SUPPORTED_PLATFORMS: iphoneos iphonesimulator
@@ -82,6 +89,7 @@ targets:
         # A host application, so the tests run inside the app's own process and can reach
         # @MainActor types and the bundle. A pure logic bundle would be faster to launch but could
         # not construct a view model.
+        PRODUCT_NAME: PizzaTests
         TEST_HOST: $(BUILT_PRODUCTS_DIR)/StayHub Pizza.app/StayHub Pizza
         BUNDLE_LOADER: $(TEST_HOST)
         GENERATE_INFOPLIST_FILE: YES

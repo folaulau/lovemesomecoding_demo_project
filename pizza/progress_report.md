@@ -7,9 +7,10 @@ Read this first when resuming work.
 cards), a checkout address chooser, admin user management, a full reports data audit, Redux on the
 admin side, an Angular frontend, a React Native mobile app, and — new — a **native SwiftUI iOS app**.
 **60 backend tests + 92 React Playwright tests + the Angular suite + 193 Jest and 31 Playwright
-tests in the React Native app + 130 XCTest cases in the iOS app.**
-⚠️ The iOS suite is **written and compiling but has never been executed** — this machine has no
-installed simulator runtime. See "Session — native SwiftUI iOS app" below.
+tests in the React Native app + 130 XCTest cases in the iOS app — the iOS suite is now GREEN,
+executed on an iPhone 15 simulator, and the app has been run against the live API.**
+⚠️ Building the iOS app on **this machine** needs a workaround: Xcode 15.4 cannot compile any asset
+catalogue on macOS 26. See "Session — running the iOS app" below.
 **Last updated:** 2026-09-18
 
 **Run the backing services:** `cd pizza-springboot-backend && docker compose up -d` → MySQL on
@@ -1421,27 +1422,83 @@ All of these are now in `CLAUDE.md` so nobody rediscovers them.
 - **`@Environment` is not readable from `init`**, so a view model needing container dependencies is
   built in `.task`, guarded to once per appearance.
 
-### Verified
+### Verified (initially, by compilation only)
 
 - ✅ `swiftc -typecheck` over all 78 app sources: **zero errors, zero warnings**.
 - ✅ Full compile to object code (`swiftc -c -whole-module-optimization`): **clean**.
 - ✅ `swiftc -typecheck` over all 2,200 lines of tests against the built module: **clean**.
 - ✅ `Pizza.xcodeproj` generates, opens and resolves its packages (Stripe 23.32.0 via SPM).
-- ❌ **NOT run.** The app has never launched and the 130 tests have never executed. This machine has
-  Xcode 15.4 with **zero installed simulator runtimes**, so `xcodebuild` reports no eligible
-  destination and even a device build fails in `actool`. Everything above is compile-time evidence.
+
+At the time this was written the app had never been launched and the tests had never run. That gap
+was closed the same day — see below.
 
 ### Backend change
 
 None. The iOS app is not a browser and is not subject to CORS, so `pizza.cors.allowed-origins` is
 untouched.
 
+## Session — running the iOS app (2026-09-18)
+
+Installed the iOS 17.5 simulator runtime (`xcodebuild -downloadPlatform iOS`, ~6.8 GB) and actually
+ran the thing. **130/130 tests pass in 0.65s**, and the app was driven against the live backend on
+an iPhone 15 simulator — the menu loads, the home screen reads "8 pizzas, your toppings · Starting
+at $9.99" from real data. Screenshot in `pizza-ios-mobile/screenshots/`.
+
+### Three real bugs that only a run could find
+
+Every one of them passed `swiftc -typecheck` cleanly, which is the lesson: type-checking proves the
+Swift is well-formed and says nothing about whether the *project* is.
+
+1. **`PRODUCT_NAME` was set in the project-level .xcconfig.** It applies to every target and the
+   Swift module name derives from it, so the app and the test bundle both produced
+   `StayHub_Pizza.swiftmodule`. The build failed with four "Multiple commands produce …" errors
+   naming the symptom rather than the cause. It is now per-target.
+2. **The Swift module was therefore `StayHub_Pizza`, not `Pizza`** — so `@testable import Pizza`
+   could never have compiled inside the real project, only against the module I had built by hand
+   with `-module-name Pizza`. Fixed with `PRODUCT_MODULE_NAME: Pizza` on the app target.
+3. **`Info.plist` was missing every standard bundle key.** Xcode synthesises `CFBundleVersion`,
+   `CFBundleExecutable` and friends only when it generates the plist itself; this target supplies
+   its own, so it owns all of them. Not a build error — the app compiled, linked and signed, and
+   then the simulator refused to install it: "does not contain a valid CFBundleVersion".
+
+Also fixed, found by review rather than by running: `.onAppear` rebuilding the pizza builder's view
+model discarded the customer's selections whenever the sheet re-appeared.
+
+### ⚠️ The blocker on this machine: Xcode 15.4 cannot compile asset catalogues on macOS 26
+
+```
+error: Failed to launch AssetCatalogSimulatorAgent via CoreSimulator spawn
+    Description: AssetCatalogSimulatorAgent exited before we could handshake
+```
+
+`actool` compiles an asset catalogue by spawning a helper *inside* a simulator runtime, and this
+Xcode's CoreSimulator cannot spawn a host binary on this macOS — `xcrun simctl spawn booted <host
+binary>` fails on its own with `LaunchdSimError 153`. It is not this project: it hits the app's own
+catalogue and all three of Stripe's, on the simulator SDK **and** the device SDK. Installing the
+runtime did not help; restarting `CoreSimulatorService` did not help.
+
+**Updating Xcode is the fix.** The run above used a temporary configuration with the asset catalogue
+and the Stripe package dropped from `project.yml` — the app takes a default icon, and
+`StripePaymentGateway` falls into the `#if canImport` else-branch it was written to have. The
+committed configuration is the correct one and was restored afterwards.
+
+So: **the committed project cannot currently be built on this machine**, and that is a toolchain
+problem, not a project one.
+
+### Still not done
+
+- **The flow has not been driven end to end.** Only the home screen was exercised. Scripting taps
+  needs Accessibility permission for the terminal (`osascript` is refused with `-1719`), so
+  browse → build → cart → checkout → order remains unverified on device.
+
 ## Still open
 
-- **The iOS app has never been executed.** Install a simulator runtime
-  (`xcodebuild -downloadPlatform iOS`, or Xcode → Settings → Platforms), then run the 130 tests and
-  drive the app end to end: browse → build a pizza → cart → guest checkout → order → sign in →
-  orders → profile. This is the single largest gap in this session's work.
+- **Update Xcode.** 15.4 cannot compile an asset catalogue on this macOS, so the committed iOS
+  project does not build here without temporarily dropping the catalogue and the Stripe package.
+- **Drive the iOS app end to end.** The 130 tests pass and the home screen is verified against the
+  live API, but browse → build a pizza → cart → guest checkout → order → sign in → orders → profile
+  has not been exercised on a simulator. Scripting taps needs Accessibility permission for the
+  terminal, which has not been granted.
 - **The React Native app has never been run on a simulator or a device either** — same cause.
   Everything there is verified through the web target, Jest and the live API.
 - Checkout still does not offer saved cards, in ANY of the four frontends. Cards can be saved and managed on

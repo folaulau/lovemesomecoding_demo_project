@@ -345,12 +345,26 @@ Pizza/
   containing a glob.
 - ⚠️ **`//` cannot appear unescaped in an .xcconfig value** — it starts a comment, so
   `http://localhost` silently becomes `http:`. Write `http:$()/$()/localhost:8085`.
-- ⚠️ **`actool` needs an installed simulator runtime even for a device build.** With zero runtimes
-  the build fails in Stripe's asset catalogue, which points nowhere useful. `swiftc -typecheck`
-  over the sources verifies compilation without it.
+- ⚠️ **Xcode 15.4 cannot compile ANY asset catalogue on macOS 26** — `Failed to launch
+  AssetCatalogSimulatorAgent via CoreSimulator spawn`. `actool` spawns a helper inside a simulator
+  runtime, and this CoreSimulator cannot spawn a host binary on this macOS (`xcrun simctl spawn
+  booted <host binary>` fails on its own with `LaunchdSimError 153`). It hits the app's own
+  catalogue and all three of Stripe's, on the simulator SDK *and* the device SDK, and installing a
+  runtime does not help. **Updating Xcode is the fix.** To run the app meanwhile, temporarily drop
+  the asset catalogue and the Stripe package from `project.yml` — `StripePaymentGateway` has an
+  `#if canImport` else-branch for exactly this.
 - ⚠️ **`@Previewable` is Xcode 16 only.** A preview needing `@State` uses a small wrapper view.
 - ⚠️ **`@Environment` is not readable from `init`.** A view model needing dependencies from the
   container is built in `.task`, guarded so it happens once per appearance rather than per redraw.
+- ⚠️ **`PRODUCT_NAME` must not be set in a PROJECT-level .xcconfig.** It applies to every target and
+  the Swift module name derives from it, so the app and the test bundle both produced
+  `StayHub_Pizza.swiftmodule` and the build died with four "Multiple commands produce …" errors that
+  name the symptom, not the cause. It is set per target, and the app also sets
+  `PRODUCT_MODULE_NAME: Pizza` so `@testable import Pizza` means what it looks like it means.
+- ⚠️ **A target with its own `INFOPLIST_FILE` owns every bundle key.** Xcode synthesises
+  `CFBundleVersion`, `CFBundleExecutable` and friends only when it generates the plist. Omitting
+  them is not a build error — the app compiles, links and signs, and then the simulator refuses to
+  install it with "does not contain a valid CFBundleVersion".
 - The URL scheme is **`pizzaios`**, not the React Native app's `pizzaapp` — both can be installed on
   one device, and iOS gives a duplicated scheme to whichever app it feels like. It must match
   `returnURL` in `StripePaymentGateway`, or a 3D Secure redirect never comes back.
