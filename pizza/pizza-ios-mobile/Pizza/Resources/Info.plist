@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+	  Build settings, surfaced to the app.
+
+	  `$(PIZZA_API_BASE_URL)` is substituted at build time from the active .xcconfig, so the same
+	  source ships to every environment and the API host is a build setting rather than a code edit.
+	  `APIConfiguration.fromBundle()` reads these two keys and nothing else.
+	-->
+	<key>PizzaAPIBaseURL</key>
+	<string>$(PIZZA_API_BASE_URL)</string>
+	<key>PizzaStripePublishableKey</key>
+	<string>$(PIZZA_STRIPE_PUBLISHABLE_KEY)</string>
+
+	<key>UILaunchScreen</key>
+	<dict>
+		<key>UIColorName</key>
+		<string>LaunchBackground</string>
+	</dict>
+
+	<!--
+	  App Transport Security blocks plain HTTP by default, and the development backend is
+	  http://localhost:8085.
+
+	  `NSAllowsLocalNetworking` opens LOCAL addresses only — localhost, .local, and private IPv4
+	  ranges. It is a targeted hole, unlike `NSAllowsArbitraryLoads`, which disables HTTPS
+	  enforcement for the ENTIRE app and is rejected by App Review without a written justification.
+	  A production build talks to an https:// API and needs neither.
+	-->
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
+
+	<!--
+	  The URL scheme Stripe returns to after a 3D Secure redirect into the bank's page.
+
+	  It must match `returnURL` in StripePaymentGateway. Get it wrong and the app is simply never
+	  reopened, leaving a paid order the customer never sees confirmed.
+
+	  `pizzaios`, not the React Native app's `pizzaapp`: both can be installed on one device, and
+	  iOS gives a duplicated scheme to whichever app it feels like.
+	-->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.lovemesomecoding.pizza.ios</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>pizzaios</string>
+			</array>
+		</dict>
+	</array>
+
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
+</dict>
+</plist>

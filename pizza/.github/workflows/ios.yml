@@ -1,0 +1,79 @@
+# Build and test pizza-ios-mobile.
+#
+# ⚠️ This workflow is NOT currently wired to a repository — lovemesomecoding_demo_project has no
+# GitHub remote yet, so it has never run. It is written to be correct rather than to be proven, and
+# that distinction is recorded here rather than left for someone to discover. The same is true of
+# docker.yml beside it.
+#
+# It runs on macOS, which costs roughly ten times a Linux minute on GitHub-hosted runners. That is
+# why the paths filter is narrow: a change to the Angular frontend must not start a Mac.
+
+name: ios
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'pizza/pizza-ios-mobile/**'
+      - '.github/workflows/ios.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'pizza/pizza-ios-mobile/**'
+      - '.github/workflows/ios.yml'
+
+defaults:
+  run:
+    working-directory: pizza/pizza-ios-mobile
+
+jobs:
+  test:
+    # Pinned, not `macos-latest`. A runner image upgrade changes the Xcode version, the available
+    # simulator runtimes and the Swift compiler all at once — which turns "someone's PR broke the
+    # build" into a half-day of archaeology. Upgrading is then a deliberate, reviewable commit.
+    runs-on: macos-14
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: sudo xcode-select -switch /Applications/Xcode_15.4.app
+
+      # Keyed on Package.resolved, which is committed for exactly this reason: the key changes only
+      # when a dependency version does, so the cache is reused until it is genuinely stale.
+      - name: Cache Swift packages
+        uses: actions/cache@v4
+        with:
+          path: ~/Library/Developer/Xcode/DerivedData/**/SourcePackages
+          key: ${{ runner.os }}-spm-${{ hashFiles('pizza/pizza-ios-mobile/Pizza.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved') }}
+          restore-keys: ${{ runner.os }}-spm-
+
+      # The committed project must match the manifest it is generated from. Regenerating and
+      # diffing is what stops the two drifting — a build setting changed in Xcode's editor and
+      # committed without updating project.yml is silently lost the next time anyone regenerates.
+      - name: Check the project matches project.yml
+        run: |
+          brew install xcodegen
+          ./Scripts/generate-project.sh
+          if ! git diff --quiet -- Pizza.xcodeproj; then
+            echo "::error::Pizza.xcodeproj is out of date. Run ./Scripts/generate-project.sh and commit the result."
+            git diff --stat -- Pizza.xcodeproj
+            exit 1
+          fi
+
+      - name: Test
+        run: |
+          xcodebuild test \
+            -project Pizza.xcodeproj \
+            -scheme Pizza \
+            -destination 'platform=iOS Simulator,name=iPhone 15,OS=17.5' \
+            -resultBundlePath TestResults.xcresult \
+            CODE_SIGNING_ALLOWED=NO \
+            | xcpretty && exit ${PIPESTATUS[0]}
+
+      - name: Upload the result bundle
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: TestResults
+          path: pizza/pizza-ios-mobile/TestResults.xcresult

@@ -1,0 +1,36 @@
+# SwiftFormat.
+#
+# Formatting is not worth arguing about, so it is not argued about: this file decides, and
+# `swiftformat .` applies it. What matters is that the rules match the three other frontends'
+# Prettier configuration wherever the languages allow — a reader moving between the React, Angular
+# and Swift versions of the same screen should see the same shape.
+#
+#     brew install swiftformat
+#     swiftformat .
+
+--swiftversion 5.10
+
+--indent 4
+--maxwidth 110
+--wraparguments before-first
+--wrapparameters before-first
+--wrapcollections preserve
+--closingparen balanced
+--commas always
+--trimwhitespace always
+--stripunusedargs closure-only
+--self remove
+--importgrouping testable-bottom
+--funcattributes prev-line
+--typeattributes prev-line
+
+# Disabled with reasons:
+#
+# blankLinesAroundMark  — the MARK comments in this codebase separate sections that already have
+#                         blank lines around them; the rule fights the doc comments above them.
+# redundantType         — `let x: ViewState<Catalogue> = .idle` reads better than `= ViewState.idle`
+#                         and the explicit type is the documentation.
+# wrapMultilineStatementBraces — reformats every SwiftUI modifier chain for no gain.
+--disable blankLinesAroundMark, redundantType, wrapMultilineStatementBraces
+
+--exclude Pizza.xcodeproj,DerivedData,.build

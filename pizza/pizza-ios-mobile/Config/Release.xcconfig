@@ -1,0 +1,12 @@
+#include "Shared.xcconfig"
+
+// A release build has no development server to infer a host from, so this MUST be set — see
+// `APIConfiguration.fromBundle()`, which traps rather than shipping a binary that silently talks to
+// localhost. The `$()` trick is explained in Debug.xcconfig.
+PIZZA_API_BASE_URL = https:$()/$()/api.pizza.example.com
+
+PIZZA_STRIPE_PUBLISHABLE_KEY =
+
+SWIFT_OPTIMIZATION_LEVEL = -O
+SWIFT_COMPILATION_MODE = wholemodule
+VALIDATE_PRODUCT = YES

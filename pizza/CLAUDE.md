@@ -26,21 +26,23 @@ instructions; that one is the state.
 - `/admin`: manage products, toppings, crusts, orders and users.
 - `/admin` reports: revenue over time, top products, orders by status, headline totals — all from
   real database aggregates, never mock data.
-- **`/admin` is web-only.** The React Native app is customer-facing and stops there, deliberately —
-  store management belongs on a desktop, and leaving it out keeps the diff between the mobile app
-  and `pizza-react-frontend` purely "native vs browser" rather than "different product".
+- **`/admin` is web-only.** Both mobile apps — React Native and native SwiftUI — are
+  customer-facing and stop there, deliberately: store management belongs on a desktop, and leaving
+  it out keeps the diff between a mobile app and `pizza-react-frontend` purely "native vs browser"
+  rather than "different product".
 
 ### Still open
 - **Checkout does not yet offer saved cards** — it always collects a fresh one. Cards can be saved
   and managed on the profile page; wiring "pay with a saved card" is the natural next step.
-  This is true of **all three** frontends.
+  This is true of **all four** frontends.
 
 ---
 
 ## Structure
 
-Four apps against one API: a Spring Boot backend, two web frontends that are deliberately the same
-app in different frameworks, and a React Native mobile app.
+Five apps against one API: a Spring Boot backend, two web frontends that are deliberately the same
+app in different frameworks, and two mobile apps — React Native and native SwiftUI — that are
+deliberately the same customer app in different native stacks.
 
 ### Backend — `pizza-springboot-backend`
 
@@ -279,6 +281,80 @@ failing silently: **Stripe's payment sheet** (no web build), **`Alert.alert`** (
 delete confirmations do nothing), and **`accessibilityState`** (never mapped onto `aria-*`, so a
 radio's checked state is invisible to the DOM though correct on device).
 
+### Mobile — `pizza-ios-mobile`
+
+Native **SwiftUI**, iOS 17+, Swift 5.10, Xcode 15.4. Same API, same palette, **customer flows only**
+for the same reason the React Native app has none. `StripePaymentSheet` is the only dependency.
+
+The point of having both mobile apps is the comparison: they are the same product, so every
+difference between them is a difference between the *stacks*. Most of the interesting comments in
+the Swift code say what React Native does about the same problem.
+
+```
+Pizza/
+├── App/         PizzaApp (@main + scenePhase) · AppEnvironment (the graph) · AppRouter · RootView
+├── Core/        Networking/ · Persistence/ · DesignSystem/ · Utilities/   — knows nothing of pizza
+├── Domain/      Models/ · Services/ (CartReducer, CartPricing — pure) · Repositories/ (protocols)
+├── Data/        Endpoints/ (every route, as inert values) · Repositories/ (HTTP + preview doubles)
+└── Features/    Home · Menu · Cart · Checkout · Orders · Auth · Profile
+```
+
+#### The architecture rules that matter
+- **Layered, dependencies pointing inwards.** Repository *protocols* live in `Domain`; their HTTP
+  implementations live in `Data`. Nothing under `Features/` imports `URLSession` or `Endpoint`, so
+  a feature is testable with an array and swapping the transport touches one folder.
+- **`AppEnvironment` is the composition root — read it first.** Every concrete type the app runs
+  with is chosen in one initialiser. There are no singletons, which is what lets
+  `AppEnvironment.preview()` hand the whole app a stubbed graph.
+- ⚠️ **`CartStore` takes `MenuStore` as a constructor parameter, and that is load-bearing.**
+  Rehydrating a saved cart needs the catalogue to re-price it. The React Native app expresses the
+  same constraint as provider *ordering*, with a comment warning not to swap them; here the
+  compiler enforces it.
+- **A pure reducer for the cart, effects in the store.** `CartReducer.reduce` is a function from a
+  value to a value — 15 tests, no app, no async, no main actor.
+- **`ViewState<T>` instead of `isLoading` + `error` + `items`.** Three booleans describe eight
+  combinations, five of which are nonsense; the enum makes them unrepresentable, including the
+  eternal spinner that ships when the failure branch is forgotten.
+- **Three `@Observable` stores for app-wide state** (auth, menu, cart), injected through the SwiftUI
+  environment — the same split as the React app's customer contexts. **A view model only where
+  there is state with rules or derived values worth testing**: `CheckoutViewModel` has both,
+  `HomeView` has neither and therefore has none.
+- **Use SwiftUI's major features and comment WHY each one earns its place** — `@Observable`,
+  `@Environment`, `@Bindable`, `.task`, `@FocusState`, `ButtonStyle`, `Layout`, `NavigationStack`
+  with typed routes, `.refreshable`, `.sheet(item:)`, structured concurrency. The comments are the
+  tutorial, and most of them say what React Native does about the same problem.
+
+#### Gotchas already paid for — do not rediscover these
+- ⚠️ **XcodeGen 2.46 writes project format 77, which Xcode 15 refuses to open**, and it ignores its
+  own `options.objectVersion` (the option parses — check with `xcodegen dump` — and has no effect).
+  `Scripts/generate-project.sh` regenerates and downgrades to format 56, which Xcode 16 reads
+  perfectly well. **Use the script, never `xcodegen generate` directly.**
+- ⚠️ **Swift 5.10 isolates a `View`'s `body` but not its helper properties.** A `private var tabs`
+  that reads a `@MainActor` store does not compile. Every view in `App/` and `Features/` is
+  annotated `@MainActor` on the type for this reason.
+- ⚠️ **`deinit` is never actor-isolated**, so it cannot cancel a task held in `@MainActor` state.
+  Reaching for `MainActor.assumeIsolated` there is asserting something untrue. Cancellation happens
+  where it can be correct: a superseding call, or `.task` ending with its view.
+- ⚠️ **A default argument is evaluated in a NONISOLATED context in Swift 5**, even inside a
+  `@MainActor` function — so `gateway: StubPaymentGateway = StubPaymentGateway()` does not compile.
+  Default to `nil` and construct in the body.
+- ⚠️ **`@MainActor` on an `XCTestCase` subclass** warns now and is an error in Swift 6: `XCTestCase`
+  is nonisolated and a subclass may not add isolation. Annotate each test *method*.
+- ⚠️ **Swift NESTS block comments.** `/api/me/**` inside a `/* … */` opens a second comment and
+  swallows the rest of the file, with the error reported at the closing brace. Use `//` for prose
+  containing a glob.
+- ⚠️ **`//` cannot appear unescaped in an .xcconfig value** — it starts a comment, so
+  `http://localhost` silently becomes `http:`. Write `http:$()/$()/localhost:8085`.
+- ⚠️ **`actool` needs an installed simulator runtime even for a device build.** With zero runtimes
+  the build fails in Stripe's asset catalogue, which points nowhere useful. `swiftc -typecheck`
+  over the sources verifies compilation without it.
+- ⚠️ **`@Previewable` is Xcode 16 only.** A preview needing `@State` uses a small wrapper view.
+- ⚠️ **`@Environment` is not readable from `init`.** A view model needing dependencies from the
+  container is built in `.task`, guarded so it happens once per appearance rather than per redraw.
+- The URL scheme is **`pizzaios`**, not the React Native app's `pizzaapp` — both can be installed on
+  one device, and iOS gives a duplicated scheme to whichever app it feels like. It must match
+  `returnURL` in `StripePaymentGateway`, or a 3D Secure redirect never comes back.
+
 ---
 
 ## Security — non-negotiable
@@ -329,6 +405,12 @@ cd pizza-react-native-mobile && nvm use && npx expo run:ios     # or run:android
 npx expo start --web                                       # :8081 (or :8082) — preview + Playwright
 npm test                                                   # 193 Jest tests, no backend needed
 npm run test:e2e                                           # 31 Playwright tests, through the web target
+
+# mobile — native SwiftUI (same backend). Nothing to install; the project is committed.
+cd pizza-ios-mobile && open Pizza.xcodeproj                # then ⌘R
+xcodebuild test -project Pizza.xcodeproj -scheme Pizza \
+    -destination 'platform=iOS Simulator,name=iPhone 15'   # 130 XCTest cases, no backend needed
+./Scripts/generate-project.sh                              # only after editing project.yml
 ```
 
 ⚠️ **The Angular app must be served on 4200, the React app on 5173, and the mobile web preview on
@@ -397,6 +479,10 @@ is especially prone to this after an external Maven build.
   Its screens show 0% in the Jest coverage report and are covered by Playwright instead.
 - `pizza-angular-frontend` also has a **Vitest unit suite** (`npm test`) for the things cheaper to
   test in isolation: a pipe, a directive, a guard, the HTTP interceptor, and the debounced search.
+- `pizza-ios-mobile` has an **XCTest suite** (130 cases, no backend needed) and no UI tests: the
+  pure domain, the networking layer through a real `URLSession` with a stubbed `URLProtocol`, the
+  Keychain-backed token store, and every store and view model against hand-written doubles.
+  Duplicating the Playwright coverage there would be testing SwiftUI rather than this app.
   ⚠️ Start Playwright only once the dev server has finished rebuilding — a run started mid-rebuild
   has produced failures that then passed in isolation and on every later run.
 - ⚠️ **Never run two suites at once.** All three share the backend and the database, so each sees

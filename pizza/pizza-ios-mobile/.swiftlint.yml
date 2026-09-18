@@ -1,0 +1,82 @@
+# SwiftLint, kept deliberately small.
+#
+# A linter earns its place by catching what review keeps catching. A linter with two hundred rules
+# earns resentment: people learn to silence it, and then it catches nothing. Every rule enabled
+# below corresponds to a real defect class in this codebase, and every rule disabled is disabled
+# with a reason.
+#
+#     brew install swiftlint
+#     swiftlint          # from this directory
+
+included:
+  - Pizza
+  - PizzaTests
+
+excluded:
+  - Pizza.xcodeproj
+
+disabled_rules:
+  # Three and four line closures are the shape of SwiftUI. This rule fires on almost every view.
+  - multiple_closures_with_trailing_closure
+  # `content()` in a @ViewBuilder property is not "unused" — the compiler disagrees with the rule.
+  - unused_closure_parameter
+  # A SwiftUI `body` is legitimately long and legitimately nested; the type_body_length limit below
+  # covers the case where a VIEW has grown too big, which is the real signal.
+  - function_body_length
+
+opt_in_rules:
+  - array_init
+  - closure_spacing
+  - contains_over_filter_count
+  - contains_over_first_not_nil
+  - empty_count
+  - empty_string
+  - explicit_init
+  - first_where
+  - force_unwrapping
+  - implicitly_unwrapped_optional
+  - last_where
+  - literal_expression_end_indentation
+  - modifier_order
+  - operator_usage_whitespace
+  - overridden_super_call
+  - prefer_self_type_over_type_of_self
+  - redundant_nil_coalescing
+  - sorted_first_last
+  - toggle_bool
+  - unneeded_parentheses_in_closure_argument
+  - vertical_parameter_alignment_on_call
+  - yoda_condition
+
+line_length:
+  # Long enough for a descriptive SwiftUI modifier chain, short enough to read two files side by
+  # side. Comments and URLs are exempt: wrapping prose to fit a code limit makes it harder to read.
+  warning: 110
+  error: 140
+  ignores_comments: true
+  ignores_urls: true
+
+type_body_length:
+  warning: 320
+  error: 450
+
+file_length:
+  warning: 500
+  error: 700
+  ignore_comment_only_lines: true
+
+identifier_name:
+  # `id`, `to`, `at` are all legitimate. The default minimum of three characters rejects them.
+  min_length: 2
+  excluded: [id, x, y]
+
+force_unwrapping:
+  severity: error
+
+# Force-unwrapping and force-trying are errors in app code. Tests may use them: a force-unwrap in a
+# test fails that test with a clear message, which is exactly what it is for.
+force_try:
+  severity: error
+
+nesting:
+  type_level: 2

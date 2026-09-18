@@ -5,10 +5,12 @@ Read this first when resuming work.
 
 **Status:** Phases 0–6 complete, plus server-side carts, customer profiles (addresses + saved
 cards), a checkout address chooser, admin user management, a full reports data audit, Redux on the
-admin side, an Angular frontend, and — new — a **React Native mobile app**.
+admin side, an Angular frontend, a React Native mobile app, and — new — a **native SwiftUI iOS app**.
 **60 backend tests + 92 React Playwright tests + the Angular suite + 193 Jest and 31 Playwright
-tests in the mobile app, all green.**
-**Last updated:** 2026-08-24
+tests in the React Native app + 130 XCTest cases in the iOS app.**
+⚠️ The iOS suite is **written and compiling but has never been executed** — this machine has no
+installed simulator runtime. See "Session — native SwiftUI iOS app" below.
+**Last updated:** 2026-09-18
 
 **Run the backing services:** `cd pizza-springboot-backend && docker compose up -d` → MySQL on
 **3308** · add `--profile search|messaging|mail|all` for the optional ones
@@ -29,6 +31,12 @@ tests in the mobile app, all green.**
 · `npm test` — **193 Jest tests**, no backend needed · `npm run test:e2e` — 31 Playwright tests
 · `npm run test:all` runs both · `npm run screenshots` regenerates `screenshots/`
 · ⚠️ **Expo Go will not work** — Stripe's native module needs the dev build `expo run:ios` produces
+
+**Run the iOS app:** `cd pizza-ios-mobile && open Pizza.xcodeproj` → ⌘R (nothing to install)
+· `xcodebuild test -project Pizza.xcodeproj -scheme Pizza -destination 'platform=iOS Simulator,name=iPhone 15'`
+  — **130 XCTest cases**, no backend needed
+· `./Scripts/generate-project.sh` after editing `project.yml` — ⚠️ **never plain `xcodegen generate`**
+· on a physical device, set the Mac's LAN address in `Config/Debug.xcconfig`
 
 **Run the backend tests:** `cd pizza-springboot-backend && ./mvnw test` — 60 tests, needs MySQL
 · `./mvnw spotless:apply` before committing Java
@@ -1341,11 +1349,102 @@ entry at all.
   runtimes; RN 0.86 needs Xcode 16.1+. `npx expo run:ios` is the remaining step once Xcode is
   updated.
 
+## Session — native SwiftUI iOS app (2026-09-18)
+
+Added `pizza-ios-mobile`: a fifth app against the same API. Native SwiftUI, iOS 17+, Swift 5.10,
+**customer flows only** — no `/admin`, for the same reason the React Native app has none.
+
+78 Swift files / ~8,000 lines of app code, ~2,200 lines of tests. `StripePaymentSheet` is the only
+dependency.
+
+### Why it exists alongside the React Native app
+
+They are the same product, so every difference between them is a difference between the *stacks*.
+That comparison is the teaching value, and most of the interesting comments in the Swift code name
+what React Native does about the same problem. The cases worth reading:
+
+| Concern | SwiftUI | React Native |
+|---|---|---|
+| Cancellation | `.task` cancels its own work; a poll loop is a `while` with an `await` | `AbortController` threaded through every call, cleared in an effect cleanup |
+| Re-render control | The framework compares view values | `React.memo` + `useCallback` on every list row |
+| Resetting a form | `.sheet(item:)` builds a fresh view per item | a `key` counter bumped on open |
+| Wrapping chips | a hand-written `Layout` conformance | `flexWrap: 'wrap'` |
+| Shadows | one `.shadow()` | `shadow*` for iOS **and** `elevation` for Android |
+| Toasts | an `.overlay` at the root | rendered last, absolutely positioned |
+| Token storage | Keychain, read through an `actor` | `expo-secure-store` |
+
+### Architecture, and the decisions behind it
+
+Layered with dependencies pointing inwards — `App` → `Features` → `Domain` ← `Data`, `Core`
+underneath knowing nothing about pizza. Repository *protocols* live in `Domain` and their HTTP
+implementations in `Data`, so nothing under `Features/` imports `URLSession` or `Endpoint`.
+
+- **`AppEnvironment` is the composition root.** No singletons anywhere; the whole graph is one
+  readable initialiser, and `AppEnvironment.preview()` swaps all of it for stubs so every `#Preview`
+  renders instantly without a backend.
+- **`CartStore` takes `MenuStore` as a constructor parameter.** Rehydrating a saved cart needs the
+  catalogue to re-price it — the React Native app expresses the same constraint as provider
+  *ordering* with a warning comment; here the compiler enforces it.
+- **A pure `CartReducer`** (15 tests, no app, no async) with the store left holding only effects:
+  hydration, a debounced `PUT`, and the `scenePhase` background flush.
+- **`ViewState<T>`** instead of `isLoading` + `error` + `items`, so the eternal-spinner bug is
+  unrepresentable rather than merely avoided.
+- **A `PaymentGateway` protocol** with Stripe behind it, `#if canImport`-guarded so the repository
+  still builds for someone who clones it without network access.
+- **A view model only where there is state with rules.** `CheckoutViewModel` has both steps, the
+  validator and the payment outcomes; `HomeView` has none and therefore has no view model.
+
+### Gotchas paid for this session
+
+All of these are now in `CLAUDE.md` so nobody rediscovers them.
+
+- **XcodeGen 2.46 writes project format 77, which Xcode 15 refuses to open** — and it *ignores* its
+  own `options.objectVersion`. The option parses (`xcodegen dump --type yaml` shows it) and has no
+  effect. `Scripts/generate-project.sh` regenerates and rewrites the format down to 56, which Xcode
+  16 reads fine, and fails loudly if the project ever starts using synchronized groups.
+- **Swift 5.10 isolates a `View`'s `body` but not its helper properties.** A `private var tabs` that
+  reads a `@MainActor` store does not compile. Every view in `App/` and `Features/` carries
+  `@MainActor` on the type.
+- **`deinit` is never actor-isolated**, so it cannot cancel a task held in main-actor state.
+  Removed rather than papered over with `MainActor.assumeIsolated`, which would assert something
+  untrue.
+- **A default argument is evaluated in a nonisolated context in Swift 5**, even inside a
+  `@MainActor` function. Default to `nil` and construct in the body.
+- **`@MainActor` on an `XCTestCase` subclass** warns now, errors in Swift 6. Annotate each method.
+- **Swift nests block comments** — `/api/me/**` inside `/* … */` opened a second comment and
+  swallowed the rest of the file, reporting the error at the closing brace.
+- **`//` cannot appear unescaped in an .xcconfig value.** `http://localhost` silently becomes
+  `http:`. Write `http:$()/$()/localhost:8085`.
+- **`actool` needs an installed simulator runtime even for a device build.** With zero runtimes the
+  build dies inside Stripe's asset catalogue, pointing nowhere useful.
+- **`@Previewable` is Xcode 16 only**; a preview needing `@State` uses a wrapper view.
+- **`@Environment` is not readable from `init`**, so a view model needing container dependencies is
+  built in `.task`, guarded to once per appearance.
+
+### Verified
+
+- ✅ `swiftc -typecheck` over all 78 app sources: **zero errors, zero warnings**.
+- ✅ Full compile to object code (`swiftc -c -whole-module-optimization`): **clean**.
+- ✅ `swiftc -typecheck` over all 2,200 lines of tests against the built module: **clean**.
+- ✅ `Pizza.xcodeproj` generates, opens and resolves its packages (Stripe 23.32.0 via SPM).
+- ❌ **NOT run.** The app has never launched and the 130 tests have never executed. This machine has
+  Xcode 15.4 with **zero installed simulator runtimes**, so `xcodebuild` reports no eligible
+  destination and even a device build fails in `actool`. Everything above is compile-time evidence.
+
+### Backend change
+
+None. The iOS app is not a browser and is not subject to CORS, so `pizza.cors.allowed-origins` is
+untouched.
+
 ## Still open
 
-- **The mobile app has never been run on a simulator or a device** — see above. Everything is
-  verified through the web target, Jest and the live API, but the native build is unexercised.
-- Checkout still does not offer saved cards, in ANY of the three frontends. Cards can be saved and managed on
+- **The iOS app has never been executed.** Install a simulator runtime
+  (`xcodebuild -downloadPlatform iOS`, or Xcode → Settings → Platforms), then run the 130 tests and
+  drive the app end to end: browse → build a pizza → cart → guest checkout → order → sign in →
+  orders → profile. This is the single largest gap in this session's work.
+- **The React Native app has never been run on a simulator or a device either** — same cause.
+  Everything there is verified through the web target, Jest and the live API.
+- Checkout still does not offer saved cards, in ANY of the four frontends. Cards can be saved and managed on
   the profile page; wiring "pay with a saved card" remains the natural next step.
 - The cart drawer does not trap focus (see above).
 - `httpResource` is marked `@experimental` in Angular 21. Used deliberately — it is the concept

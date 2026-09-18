@@ -1,0 +1,28 @@
+#include "Shared.xcconfig"
+
+// Where the API lives in development.
+//
+// `//` cannot appear unescaped in an .xcconfig value — it starts a comment, so "http://localhost"
+// would silently become "http:". `$()` is an empty variable substitution that breaks up the pair
+// without changing the resulting string. This is the single most confusing thing about .xcconfig
+// files and it fails silently, which is why it is spelled out here.
+//
+// The default works on the SIMULATOR, which shares the Mac's network stack. A PHYSICAL DEVICE is a
+// different machine on the Wi-Fi and cannot reach "localhost" — it is the phone itself. Put the
+// Mac's LAN address here instead:
+//
+//     PIZZA_API_BASE_URL = http:$()/$()/192.168.1.42:8085
+//
+// Find it with: ipconfig getifaddr en0
+PIZZA_API_BASE_URL = http:$()/$()/localhost:8085
+
+// The Stripe PUBLISHABLE key. Public by design — it identifies the account and can only create
+// payment intents, never charge one. The SECRET key lives on the backend and must never appear in
+// this repository. If a value starting `sk_` ever lands here, roll it in the Stripe dashboard.
+//
+// Left empty by default so a clone builds without one; checkout then explains rather than failing.
+PIZZA_STRIPE_PUBLISHABLE_KEY =
+
+SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG
+SWIFT_OPTIMIZATION_LEVEL = -Onone
+ONLY_ACTIVE_ARCH = YES

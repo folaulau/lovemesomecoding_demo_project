@@ -1,0 +1,29 @@
+# Xcode
+#
+# `Pizza.xcodeproj` IS committed — a reader clones, opens it and hits Run. What is excluded below is
+# everything Xcode writes into it that is not the project: per-user window layouts, breakpoints and
+# the last-selected scheme, all of which change on every launch and belong to nobody but their author.
+xcuserdata/
+*.xcuserstate
+*.xcuserdatad/
+DerivedData/
+build/
+*.xcworkspace/xcuserdata/
+
+# Swift Package Manager
+#
+# `Package.resolved` is deliberately NOT ignored: it pins the exact Stripe version every build
+# resolves, which is the difference between a reproducible build and "it worked on my machine last
+# Tuesday". Only the checkout directory is transient.
+.swiftpm/
+Packages/
+*.xcodeproj/project.xcworkspace/xcshareddata/IDEWorkspaceChecks.plist
+
+# macOS
+.DS_Store
+
+# Local overrides
+#
+# For a real Stripe publishable key or a LAN API address a developer does not want to commit. See
+# Config/Debug.xcconfig.
+Config/Local.xcconfig

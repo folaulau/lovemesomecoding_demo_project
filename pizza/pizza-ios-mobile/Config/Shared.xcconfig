@@ -1,0 +1,27 @@
+// Settings common to every configuration.
+//
+// An .xcconfig is a plain text file of build settings. Keeping them here rather than in the Xcode
+// UI means they are reviewable in a diff — a build setting changed in the project editor shows up
+// as an unreadable line in project.pbxproj, which is how a release-only setting gets changed by
+// accident and nobody notices for a month.
+
+PRODUCT_BUNDLE_IDENTIFIER = com.lovemesomecoding.pizza.ios
+PRODUCT_NAME = StayHub Pizza
+MARKETING_VERSION = 1.0.0
+CURRENT_PROJECT_VERSION = 1
+
+IPHONEOS_DEPLOYMENT_TARGET = 17.0
+SWIFT_VERSION = 5.0
+TARGETED_DEVICE_FAMILY = 1,2
+
+// Warnings are worth reading, so there should be few enough to read.
+GCC_TREAT_WARNINGS_AS_ERRORS = NO
+SWIFT_TREAT_WARNINGS_AS_ERRORS = NO
+CLANG_ENABLE_MODULES = YES
+ENABLE_USER_SCRIPT_SANDBOXING = YES
+
+// No signing identity is assumed: a fresh clone builds for the simulator without an Apple account.
+// Set a team in Xcode's Signing & Capabilities pane to run on a device.
+CODE_SIGN_STYLE = Automatic
+CODE_SIGNING_REQUIRED[sdk=iphonesimulator*] = NO
+CODE_SIGNING_ALLOWED[sdk=iphonesimulator*] = NO
