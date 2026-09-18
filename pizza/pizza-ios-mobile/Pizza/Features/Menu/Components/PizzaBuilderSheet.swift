@@ -19,11 +19,18 @@ struct PizzaBuilderSheet: View {
     /// it past the first one.
     @State private var model: PizzaBuilderViewModel
 
+    /// Guards the one-time setup below.
+    ///
+    /// Without it, `.onAppear` would rebuild the model — and discard every selection — the next
+    /// time this view appears. That is not hypothetical: backgrounding the app with the builder
+    /// open and returning to it fires `onAppear` again, and the customer would find their toppings
+    /// gone with no explanation.
+    @State private var hasLoadedCatalogue = false
+
     init(product: Product, onClose: @escaping () -> Void) {
         self.product = product
         self.onClose = onClose
-        // The catalogue is passed in from the sheet's presenter via the initialiser rather than
-        // read from the environment, because `@Environment` is not available at init time.
+        // Seeded with an empty catalogue and replaced on appear — see the comment on `.onAppear`.
         _model = State(initialValue: PizzaBuilderViewModel(product: product, catalogue: .init()))
     }
 
@@ -58,13 +65,21 @@ struct PizzaBuilderSheet: View {
         }
         .onAppear {
             /*
-             * The model is rebuilt here with the real catalogue.
+             * The model is rebuilt here, once, with the real catalogue.
              *
              * `init` cannot read `@Environment` — the property wrappers are not populated until the
              * view is installed in the hierarchy — so the initial model is constructed with an
-             * empty catalogue and replaced on appear. The alternative is passing the catalogue
-             * down through `MenuView`, which works but couples the two screens for no gain.
+             * empty catalogue and replaced on first appearance. The alternative is passing the
+             * catalogue down through `MenuView`, which works but couples the two screens for no
+             * gain.
+             *
+             * The guard is the part that matters: `onAppear` fires again when the view returns to
+             * the screen, and rebuilding the model there would silently discard the customer's
+             * selections. Resetting state on *identity* is `.sheet(item:)`'s job, and it already
+             * does it — every open of a different product gets a different view.
              */
+            guard !hasLoadedCatalogue else { return }
+            hasLoadedCatalogue = true
             model = PizzaBuilderViewModel(product: product, catalogue: menu.catalogue)
         }
     }
