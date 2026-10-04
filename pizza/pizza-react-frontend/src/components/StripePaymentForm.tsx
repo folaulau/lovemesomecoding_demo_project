@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Alert, Button, Spinner } from 'react-bootstrap';
 import { PaymentElement, useElements, useStripe } from '@stripe/react-stripe-js';
 import { formatMoney } from '../lib/money';
+import { customerSafeMessage } from '../lib/stripeErrors';
 
 interface Props {
   total: number;
@@ -48,13 +49,8 @@ export function StripePaymentForm({ total, onSuccess }: Props) {
     });
 
     if (result.error) {
-      // card_error and validation_error are safe to show; anything else is a generic message,
-      // because the detail can leak information about the payment infrastructure.
-      const message =
-        result.error.type === 'card_error' || result.error.type === 'validation_error'
-          ? (result.error.message ?? 'Your card was declined.')
-          : 'Something went wrong taking the payment. Please try again.';
-      setError(message);
+      // Only card and validation errors are shown verbatim — see customerSafeMessage for why.
+      setError(customerSafeMessage(result.error));
       setSubmitting(false);
       return;
     }
