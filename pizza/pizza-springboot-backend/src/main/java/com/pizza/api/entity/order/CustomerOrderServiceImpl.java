@@ -258,8 +258,33 @@ public class CustomerOrderServiceImpl implements CustomerOrderService {
                     order.getStripePaymentIntentId(), user.getStripeCustomerId(), card.getStripePaymentMethodId());
             log.info("Order {} will be paid with saved card {}", orderId, paymentMethodId);
         } catch (StripeException ex) {
+            // The order can be PAID at Stripe while still PENDING_PAYMENT here: paid in another tab,
+            // with the webhook not yet arrived. Stripe then refuses to change the card, and "choose
+            // another card" would invite the customer to pay twice. So ask Stripe what state the
+            // payment is actually in, rather than guessing from the wording of its error.
+            if (paymentAlreadySucceeded(order.getStripePaymentIntentId())) {
+                log.info("Order {} is already paid at Stripe; refusing to change its card", orderId);
+                throw ApiException.conflict("Order " + orderId + " has already been paid");
+            }
             log.error("Stripe refused saved card {} for order {}", paymentMethodId, orderId, ex);
             throw ApiException.badRequest("That card could not be used for this order. Please choose another card.");
+        }
+    }
+
+    /**
+     * Whether Stripe reports this PaymentIntent as already paid.
+     *
+     * <p>Only asked AFTER Stripe refuses an update — checking first would cost a round trip on every
+     * attempt and could still lose the race to a payment completing in between. If this check
+     * itself fails, the answer is "not known to be paid" and the caller's ordinary error stands.
+     */
+    private boolean paymentAlreadySucceeded(String paymentIntentId) {
+        try {
+            PaymentIntent intent = stripeService.retrieve(paymentIntentId);
+            return intent != null && "succeeded".equals(intent.getStatus());
+        } catch (StripeException ex) {
+            log.warn("Could not re-check PaymentIntent {} after a refused update", paymentIntentId, ex);
+            return false;
         }
     }
 

@@ -15,6 +15,8 @@ import com.pizza.api.entity.user.UserPaymentMethodRepository;
 import com.pizza.api.exception.ApiException;
 import com.pizza.api.payment.StripeService;
 import com.stripe.exception.ApiConnectionException;
+import com.stripe.exception.InvalidRequestException;
+import com.stripe.model.PaymentIntent;
 import java.time.YearMonth;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -263,5 +265,59 @@ class CustomerOrderSavedCardTest {
         assertThat(ex.getMessage()).doesNotContain("internal Stripe detail");
         assertThat(orderDAO.findByPublicId(order.getPublicId()).orElseThrow().getStatus())
                 .isEqualTo(OrderStatus.PENDING_PAYMENT);
+    }
+
+    /** What Stripe answers when asked to change the card on a PaymentIntent that is already paid. */
+    private static InvalidRequestException refusedBecauseAlreadyPaid() {
+        return new InvalidRequestException(
+                "This PaymentIntent's payment_method could not be updated because it has a status of succeeded.",
+                "payment_method",
+                "req_test",
+                "payment_intent_unexpected_state",
+                400,
+                null);
+    }
+
+    private static PaymentIntent intentWithStatus(String status) {
+        PaymentIntent intent = new PaymentIntent();
+        intent.setId(INTENT);
+        intent.setStatus(status);
+        return intent;
+    }
+
+    @Test
+    @DisplayName("409, not 400, when the order was already paid at Stripe (another tab) but not yet here")
+    void alreadyPaidAtStripe() throws Exception {
+        // Our row still says PENDING_PAYMENT — the webhook has not arrived — so check 2 passes.
+        UserPaymentMethod card = validCard(customer, "pm_test_visa");
+        when(stripeService.attachSavedCardToPaymentIntent(INTENT, STRIPE_CUSTOMER, "pm_test_visa"))
+                .thenThrow(refusedBecauseAlreadyPaid());
+        when(stripeService.retrieve(INTENT)).thenReturn(intentWithStatus("succeeded"));
+
+        ApiException ex = catchThrowableOfType(
+                ApiException.class,
+                () -> orderService.useSavedPaymentMethod(
+                        order.getPublicId(), card.getPublicId(), "customer@pizza.test"));
+
+        assertThat(ex).isNotNull();
+        assertThat(ex.getError().getStatus()).isEqualTo(HttpStatus.CONFLICT);
+        assertThat(ex.getMessage()).contains("already been paid").doesNotContain("choose another card");
+    }
+
+    @Test
+    @DisplayName("still 400 when Stripe refuses and the payment has NOT succeeded")
+    void refusedButNotPaid() throws Exception {
+        UserPaymentMethod card = validCard(customer, "pm_test_visa");
+        when(stripeService.attachSavedCardToPaymentIntent(INTENT, STRIPE_CUSTOMER, "pm_test_visa"))
+                .thenThrow(refusedBecauseAlreadyPaid());
+        when(stripeService.retrieve(INTENT)).thenReturn(intentWithStatus("requires_payment_method"));
+
+        ApiException ex = catchThrowableOfType(
+                ApiException.class,
+                () -> orderService.useSavedPaymentMethod(
+                        order.getPublicId(), card.getPublicId(), "customer@pizza.test"));
+
+        assertThat(ex).isNotNull();
+        assertThat(ex.getError().getStatus()).isEqualTo(HttpStatus.BAD_REQUEST);
     }
 }

@@ -6,6 +6,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -15,8 +16,11 @@ import com.pizza.api.entity.user.UserDAO;
 import com.pizza.api.entity.user.UserPaymentMethod;
 import com.pizza.api.entity.user.UserPaymentMethodRepository;
 import com.pizza.api.payment.StripeService;
+import com.stripe.exception.InvalidRequestException;
+import com.stripe.model.PaymentIntent;
 import java.time.YearMonth;
 import java.util.UUID;
+import org.hamcrest.Matchers;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -228,6 +232,29 @@ class SavedCardPaymentApiIntegrationTest {
         payWith(order.getPublicId(), card.getPublicId(), customerToken).andExpect(status().isConflict());
 
         stripeWasNeverCalled();
+    }
+
+    @Test
+    @DisplayName("409 when Stripe already took the payment but our webhook has not arrived yet")
+    void paidAtStripeButNotYetHere() throws Exception {
+        // Our row still says PENDING_PAYMENT; only Stripe knows it was paid (in another tab).
+        UserPaymentMethod card = validCard(customer, "pm_test_visa");
+        when(stripeService.attachSavedCardToPaymentIntent(INTENT, STRIPE_CUSTOMER, "pm_test_visa"))
+                .thenThrow(new InvalidRequestException(
+                        "This PaymentIntent's payment_method could not be updated because it has a status of succeeded.",
+                        "payment_method",
+                        "req_test",
+                        "payment_intent_unexpected_state",
+                        400,
+                        null));
+        PaymentIntent paid = new PaymentIntent();
+        paid.setId(INTENT);
+        paid.setStatus("succeeded");
+        when(stripeService.retrieve(INTENT)).thenReturn(paid);
+
+        payWith(order.getPublicId(), card.getPublicId(), customerToken)
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message").value(Matchers.containsString("already been paid")));
     }
 
     // --------------------------------------------------------------- validation
