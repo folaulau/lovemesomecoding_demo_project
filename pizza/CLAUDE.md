@@ -74,11 +74,11 @@ com.pizza.api
 
 #### The DAO layer — the rule that matters most
 Every DAO is an **interface plus an implementation**, and the implementation wires in a Spring Data
-repository **and** a `JdbcTemplate` — whichever of the two each method needs.
+repository, a `JdbcTemplate`, or both — whichever its methods need.
 `BalanceDAOImpl.java` in trademachine is the reference; `UserDAOImp` here is the local example.
 
-(A DAO with no simple CRUD at all is the one exception: `ReportDAOImp` is JdbcTemplate-only, because
-reporting never loads or saves an entity.)
+(Wire only what the methods use: `ReportDAOImp` is JdbcTemplate-only, since reporting never loads an
+entity, and `UserPaymentMethodDAOImp` is repository-only until one of its queries needs SQL.)
 
 - **Repository** for the simple things: save, update, single-row lookups, existence checks.
   Spring Data derives them from the method name, returns managed entities that dirty-checking can
