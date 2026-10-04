@@ -29,4 +29,14 @@ public interface CustomerOrderService {
 
     /** Called by the Stripe webhook once payment is confirmed. */
     void markPaid(String paymentIntentId);
+
+    /**
+     * Sets one of the signed-in customer's saved cards on their order's PaymentIntent, ready for
+     * the browser to confirm. Nothing is charged here and the order itself is not modified.
+     *
+     * @param orderId the order's public UUID
+     * @param paymentMethodId OUR saved-card UUID — never a Stripe token
+     * @param userEmail the signed-in user's email, from the token
+     */
+    void useSavedPaymentMethod(UUID orderId, UUID paymentMethodId, String userEmail);
 }

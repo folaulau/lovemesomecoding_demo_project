@@ -11,6 +11,7 @@ import com.stripe.model.SetupIntent;
 import com.stripe.net.RequestOptions;
 import com.stripe.param.CustomerCreateParams;
 import com.stripe.param.PaymentIntentCreateParams;
+import com.stripe.param.PaymentIntentUpdateParams;
 import com.stripe.param.PaymentMethodAttachParams;
 import com.stripe.param.SetupIntentCreateParams;
 import jakarta.annotation.PostConstruct;
@@ -121,6 +122,43 @@ public class StripeService {
     public PaymentIntent retrieve(String paymentIntentId) throws StripeException {
         requireConfigured();
         return stripe.paymentIntents().retrieve(paymentIntentId);
+    }
+
+    /**
+     * Points an order's existing PaymentIntent at one of the customer's saved cards.
+     *
+     * <p>Both fields are needed. A saved card is attached to a Stripe Customer, and Stripe refuses
+     * to use it on a PaymentIntent that does not name that same Customer. The browser then confirms
+     * the intent with its clientSecret alone — it never learns the {@code pm_...} token.
+     *
+     * <p>An UPDATE, not a new PaymentIntent: the order already has one, and its clientSecret is
+     * what the checkout page is holding. After a decline Stripe puts the intent back into
+     * {@code requires_payment_method}, so this same call lets the customer try another card on the
+     * same order.
+     *
+     * <p><b>Deliberately no idempotency key</b>, unlike {@link #createPaymentIntent}. Stripe replays
+     * the stored response for a repeated key without doing anything. A key per (order, card) would
+     * make "card A, then B, then A again" return the cached first answer and leave B on the intent.
+     * It is not needed for retry safety either: setting the same two fields twice ends in the same
+     * state, so a retried update is harmless by nature.
+     */
+    @Retryable(
+            includes = {ApiConnectionException.class, RateLimitException.class},
+            maxRetries = 3,
+            delay = 200,
+            multiplier = 2.0,
+            maxDelay = 2000,
+            jitter = 100)
+    public PaymentIntent attachSavedCardToPaymentIntent(
+            String paymentIntentId, String customerId, String paymentMethodId) throws StripeException {
+        requireConfigured();
+        return stripe.paymentIntents()
+                .update(
+                        paymentIntentId,
+                        PaymentIntentUpdateParams.builder()
+                                .setCustomer(customerId)
+                                .setPaymentMethod(paymentMethodId)
+                                .build());
     }
 
     /**

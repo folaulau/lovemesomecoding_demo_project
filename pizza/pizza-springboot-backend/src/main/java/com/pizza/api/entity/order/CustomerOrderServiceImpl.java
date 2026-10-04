@@ -6,11 +6,14 @@ import com.pizza.api.dto.OrderCreateResponseDTO;
 import com.pizza.api.dto.OrderDTO;
 import com.pizza.api.entity.user.User;
 import com.pizza.api.entity.user.UserDAO;
+import com.pizza.api.entity.user.UserPaymentMethod;
+import com.pizza.api.entity.user.UserPaymentMethodDAO;
 import com.pizza.api.exception.ApiException;
 import com.pizza.api.payment.StripeService;
 import com.stripe.exception.StripeException;
 import com.stripe.model.PaymentIntent;
 import com.stripe.model.PaymentMethod;
+import java.time.YearMonth;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -29,6 +32,9 @@ public class CustomerOrderServiceImpl implements CustomerOrderService {
 
     @Autowired
     private UserDAO userDAO;
+
+    @Autowired
+    private UserPaymentMethodDAO paymentMethodDAO;
 
     @Autowired
     private EntityDTOMapper mapper;
@@ -192,6 +198,69 @@ public class CustomerOrderServiceImpl implements CustomerOrderService {
                             }
                         },
                         () -> log.warn("Webhook referenced unknown PaymentIntent {}", paymentIntentId));
+    }
+
+    /**
+     * Pay-with-a-saved-card, server half. The checks run cheapest and least revealing first.
+     *
+     * <p>Every "not yours" case is a 404 that reads exactly like "does not exist" — a guest order,
+     * another customer's order, another customer's card. A 403 would confirm the id is real.
+     *
+     * <p>The browser sends OUR card UUID; the {@code pm_...} token is looked up here and goes
+     * straight to Stripe. It never appears in a request or a response.
+     *
+     * <p>Read-only as far as our database is concerned: the order only becomes PAID through the
+     * same webhook / payment-status path as a newly typed card.
+     */
+    @Override
+    @Transactional(readOnly = true)
+    public void useSavedPaymentMethod(UUID orderId, UUID paymentMethodId, String userEmail) {
+        if (userEmail == null) {
+            throw ApiException.unauthorized("You must be signed in to pay with a saved card");
+        }
+        User user = userDAO.findByEmail(userEmail).orElseThrow(() -> ApiException.notFound("Order", orderId));
+
+        // 1. The order must exist AND be this user's. A guest order has no user, so it fails here too.
+        CustomerOrder order = orderDAO.findByPublicId(orderId)
+                .filter(o -> o.getUser() != null && o.getUser().getId().equals(user.getId()))
+                .orElseThrow(() -> ApiException.notFound("Order", orderId));
+
+        // 2. Only an unpaid order can change how it is paid.
+        if (order.getStatus() != OrderStatus.PENDING_PAYMENT) {
+            throw ApiException.conflict("Order " + orderId + " is " + order.getStatus() + " and can no longer be paid");
+        }
+
+        // 3. There must be a PaymentIntent to point at the card.
+        if (!stripeService.isConfigured() || order.getStripePaymentIntentId() == null) {
+            throw ApiException.badRequest("Payment is not available for this order");
+        }
+
+        // 4. The card must be this user's and not deleted.
+        UserPaymentMethod card = paymentMethodDAO
+                .findOwned(user.getId(), paymentMethodId)
+                .orElseThrow(() -> ApiException.notFound("Payment method", paymentMethodId));
+
+        // 5. The checkout greys expired cards out, but the server is the one that decides.
+        if (card.isExpiredAt(YearMonth.now())) {
+            throw ApiException.badRequest("That card has expired. Please choose another card.");
+        }
+
+        // Every saved card was attached to this Customer when it was saved, so a missing id means
+        // our data is inconsistent — fail clearly rather than send Stripe a request it will refuse.
+        if (user.getStripeCustomerId() == null) {
+            throw ApiException.badRequest("That card cannot be used. Please choose another card.");
+        }
+
+        // 6. Point the PaymentIntent at the card. Stripe's own message is logged, not returned:
+        // it can describe our integration rather than anything the customer can act on.
+        try {
+            stripeService.attachSavedCardToPaymentIntent(
+                    order.getStripePaymentIntentId(), user.getStripeCustomerId(), card.getStripePaymentMethodId());
+            log.info("Order {} will be paid with saved card {}", orderId, paymentMethodId);
+        } catch (StripeException ex) {
+            log.error("Stripe refused saved card {} for order {}", paymentMethodId, orderId, ex);
+            throw ApiException.badRequest("That card could not be used for this order. Please choose another card.");
+        }
     }
 
     /**

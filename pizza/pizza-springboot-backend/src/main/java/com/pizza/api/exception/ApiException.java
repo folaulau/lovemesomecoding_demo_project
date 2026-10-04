@@ -67,4 +67,9 @@ public class ApiException extends RuntimeException {
     public static ApiException forbidden(String message) {
         return new ApiException(HttpStatus.FORBIDDEN, message);
     }
+
+    /** 409 — the request is fine, but the resource is no longer in a state that allows it. */
+    public static ApiException conflict(String message) {
+        return new ApiException(HttpStatus.CONFLICT, message);
+    }
 }
