@@ -1576,6 +1576,10 @@ Backend + `pizza-react-frontend` only. Commits: `1b0549a0` (lookup + expiry rule
   `ReportServiceImplTest`, 2 in `admin.spec.ts`. Re-seeding only restarts the countdown. Fix: each
   test creates its own recent order inside its transaction and asserts the report counted it. Separately, leftover Playwright orders break
   `CustomerOrderDAOIntegrationTest.filtersByStatus` — the specs that create them need to clean up.
+- Two tabs on one order: the saved card set last is charged (own cards only; no double charge).
+- Checkout: if the saved-card list loads late, the payment form swaps under the customer.
+- Saved card 404: if the list reload also fails, the "no longer available" message is hidden.
+- `useSavedPaymentMethod` calls Stripe inside its read-only transaction (documented trade-off).
 - The cart drawer does not trap focus (see above).
 - `httpResource` is marked `@experimental` in Angular 21. Used deliberately — it is the concept
   `MenuService` exists to teach — but it is a label to weigh before copying into production code.
