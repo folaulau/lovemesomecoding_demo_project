@@ -7,6 +7,7 @@ import jakarta.persistence.*;
 import java.io.Serial;
 import java.io.Serializable;
 import java.time.LocalDateTime;
+import java.time.YearMonth;
 import java.util.UUID;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -95,6 +96,23 @@ public class UserPaymentMethod implements Serializable {
     @UpdateTimestamp
     @Column(name = "updated_at", nullable = false)
     private LocalDateTime updatedAt;
+
+    /**
+     * Whether the card had expired by {@code now}.
+     *
+     * <p>A card is valid THROUGH its expiry month — "12/2026" still works on 31 December 2026 — so
+     * it has expired only once {@code now} is a later month. {@code now} is a parameter rather than
+     * read from the clock here so the boundary can be tested without waiting for one.
+     *
+     * <p>A missing expiry counts as not expired: Stripe always reports one for a card, and if it
+     * ever did not, Stripe is still the final word when the card is charged.
+     */
+    public boolean isExpiredAt(YearMonth now) {
+        if (expMonth == null || expYear == null) {
+            return false;
+        }
+        return YearMonth.of(expYear, expMonth).isBefore(now);
+    }
 
     @PrePersist
     private void preCreate() {

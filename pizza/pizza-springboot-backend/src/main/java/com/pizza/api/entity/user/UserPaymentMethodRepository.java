@@ -10,4 +10,7 @@ public interface UserPaymentMethodRepository extends JpaRepository<UserPaymentMe
     List<UserPaymentMethod> findByUserIdOrderByPrimaryDescCreatedAtDesc(Long userId);
 
     Optional<UserPaymentMethod> findByPublicId(UUID publicId);
+
+    /** Ownership is part of the WHERE clause, so another user's card is simply not found. */
+    Optional<UserPaymentMethod> findByPublicIdAndUserId(UUID publicId, Long userId);
 }
