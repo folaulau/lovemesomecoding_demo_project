@@ -1,11 +1,13 @@
 package com.pizza.api.entity.order;
 
 import static org.springframework.http.HttpStatus.CREATED;
+import static org.springframework.http.HttpStatus.NO_CONTENT;
 import static org.springframework.http.HttpStatus.OK;
 
 import com.pizza.api.dto.OrderCreateDTO;
 import com.pizza.api.dto.OrderCreateResponseDTO;
 import com.pizza.api.dto.OrderDTO;
+import com.pizza.api.dto.SavedPaymentMethodDTO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -57,6 +59,27 @@ public class CustomerOrderRestController {
     @GetMapping("/{id}/payment-status")
     public ResponseEntity<OrderDTO> getPaymentStatus(@PathVariable UUID id) {
         return new ResponseEntity<>(orderService.refreshPaymentStatus(id), OK);
+    }
+
+    /**
+     * Pay with a saved card, step one of two: point the order's PaymentIntent at the card.
+     *
+     * <p>Nothing is charged here. The browser confirms the payment with the clientSecret it already
+     * holds, and the order becomes PAID through the same webhook / payment-status path as a newly
+     * typed card. Signed-in only — a guest has no saved cards.
+     */
+    @Operation(
+            summary = "Pay this order with one of my saved cards",
+            description = "Sets the saved card on the order's Stripe PaymentIntent; the browser then confirms it. "
+                    + "404 for an order or card that is not the caller's, 409 if the order is no longer "
+                    + "awaiting payment, 400 for an expired card.")
+    @SecurityRequirement(name = "bearerAuth")
+    @PutMapping("/{id}/payment-method")
+    public ResponseEntity<Void> useSavedPaymentMethod(
+            @PathVariable UUID id, @Valid @RequestBody SavedPaymentMethodDTO dto, Principal principal) {
+        log.info("PUT /api/orders/{}/payment-method", id);
+        orderService.useSavedPaymentMethod(id, dto.paymentMethodId(), principal.getName());
+        return new ResponseEntity<>(NO_CONTENT);
     }
 
     @Operation(summary = "The signed-in user's order history")

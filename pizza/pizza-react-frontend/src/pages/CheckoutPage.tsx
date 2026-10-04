@@ -8,8 +8,9 @@ import { ApiError, api } from '../lib/api';
 import { stripePromise } from '../lib/stripe';
 import { formatMoney, lineTotal } from '../lib/money';
 import { StripePaymentForm } from '../components/StripePaymentForm';
+import { SavedCardPayment } from '../components/SavedCardPayment';
 import { profileApi } from '../lib/profileApi';
-import type { Address, OrderCreateRequest, OrderCreateResponse } from '../types';
+import type { Address, OrderCreateRequest, OrderCreateResponse, PaymentMethod } from '../types';
 
 /**
  * Checkout, in two steps.
@@ -47,6 +48,9 @@ export function CheckoutPage() {
   const NEW_ADDRESS = 'NEW';
   const [addresses, setAddresses] = useState<Address[]>([]);
   const [selectedAddressId, setSelectedAddressId] = useState<string>(NEW_ADDRESS);
+
+  // Saved cards, for signed-in customers. Offered on the payment step; empty means "new card only".
+  const [cards, setCards] = useState<PaymentMethod[]>([]);
 
   const [form, setForm] = useState({
     customerName: user?.fullName ?? '',
@@ -94,6 +98,38 @@ export function CheckoutPage() {
       cancelled = true;
     };
   }, [isAuthenticated]);
+
+  /*
+   * Load the customer's saved cards, for the payment step.
+   *
+   * Same shape as the address load above, and the same rule: guests skip it, and a list that will
+   * not load must not block checkout — the payment step simply offers a new card.
+   */
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
+    let cancelled = false;
+    profileApi
+      .listPaymentMethods()
+      .then((saved) => {
+        if (!cancelled) setCards(saved);
+      })
+      .catch(() => {
+        // Fall back to the new-card form.
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated]);
+
+  /** Re-fetch after a card turns out to be gone (deleted in another tab). */
+  function reloadCards() {
+    profileApi
+      .listPaymentMethods()
+      .then(setCards)
+      .catch(() => setCards([]));
+  }
 
   function updateField(field: keyof typeof form, value: string) {
     // Functional update: safe even if several updates are batched together.
@@ -222,10 +258,22 @@ export function CheckoutPage() {
                       appearance: { theme: 'stripe', variables: { colorPrimary: '#d8102a' } },
                     }}
                   >
-                    <StripePaymentForm
-                      total={created.order.total}
-                      onSuccess={handlePaymentSuccess}
-                    />
+                    {/* Saved cards first when the customer has any; guests never do. */}
+                    {cards.length > 0 ? (
+                      <SavedCardPayment
+                        cards={cards}
+                        orderId={created.order.id}
+                        clientSecret={created.clientSecret}
+                        total={created.order.total}
+                        onSuccess={handlePaymentSuccess}
+                        onCardsStale={reloadCards}
+                      />
+                    ) : (
+                      <StripePaymentForm
+                        total={created.order.total}
+                        onSuccess={handlePaymentSuccess}
+                      />
+                    )}
                   </Elements>
                 ) : (
                   <Alert variant="warning" className="mb-0">

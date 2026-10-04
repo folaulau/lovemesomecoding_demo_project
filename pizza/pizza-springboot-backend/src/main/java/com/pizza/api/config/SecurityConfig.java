@@ -123,6 +123,10 @@ public class SecurityConfig {
                         // Left simple here deliberately, and called out rather than hidden.
                         .requestMatchers(HttpMethod.GET, "/api/orders/*", "/api/orders/*/payment-status")
                         .permitAll()
+                        // Paying with a saved card needs an account — the cards belong to one.
+                        // Default-deny would close it anyway; stated so nobody has to work that out.
+                        .requestMatchers(HttpMethod.PUT, "/api/orders/*/payment-method")
+                        .authenticated()
 
                         // ---- server-rendered pages -----------------------------------------
                         // Same reasoning as GET /api/orders/* above: a guest with the link must be

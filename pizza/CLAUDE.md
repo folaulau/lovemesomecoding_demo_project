@@ -32,9 +32,10 @@ instructions; that one is the state.
   rather than "different product".
 
 ### Still open
-- **Checkout does not yet offer saved cards** — it always collects a fresh one. Cards can be saved
-  and managed on the profile page; wiring "pay with a saved card" is the natural next step.
-  This is true of **all four** frontends.
+- **Pay with a saved card is in `pizza-react-frontend` only** (PIZZA-42, 2026-10-04). The Angular,
+  React Native and SwiftUI checkouts still always collect a fresh card.
+- **No frontend can save a card AT checkout** — cards are saved on the profile page only. Separate
+  ticket, deliberately out of PIZZA-42.
 
 ---
 
@@ -73,11 +74,11 @@ com.pizza.api
 
 #### The DAO layer — the rule that matters most
 Every DAO is an **interface plus an implementation**, and the implementation wires in a Spring Data
-repository **and** a `JdbcTemplate` — whichever of the two each method needs.
+repository, a `JdbcTemplate`, or both — whichever its methods need.
 `BalanceDAOImpl.java` in trademachine is the reference; `UserDAOImp` here is the local example.
 
-(A DAO with no simple CRUD at all is the one exception: `ReportDAOImp` is JdbcTemplate-only, because
-reporting never loads or saves an entity.)
+(Wire only what the methods use: `ReportDAOImp` is JdbcTemplate-only, since reporting never loads an
+entity, and `UserPaymentMethodDAOImp` is repository-only until one of its queries needs SQL.)
 
 - **Repository** for the simple things: save, update, single-row lookups, existence checks.
   Spring Data derives them from the method name, returns managed entities that dirty-checking can
@@ -115,9 +116,10 @@ React 19 + TypeScript + Vite, Bootstrap 5 via react-bootstrap.
 ```
 src/
 ├── components/  AppNavbar · CartDrawer · Footer · PizzaBuilderModal · ProductCard
-│                ProtectedRoute · StripePaymentForm · ErrorBoundary
+│                ProtectedRoute · StripePaymentForm · SavedCardPayment · ErrorBoundary
 ├── context/     AuthContext · CartContext · MenuContext · ToastContext
-├── lib/         api.ts (the only place that calls fetch) · adminApi · profileApi · stripe · money
+├── lib/         api.ts (the only place that calls fetch) · adminApi · profileApi · orderApi
+│                stripe · stripeErrors · money · cards
 ├── pages/       Home · Menu · Checkout · OrderConfirmation · Login · Register · Orders · Profile
 │   └── admin/   AdminLayout + Reports · Products · Toppings · Crusts · Orders · Users
 ├── store/       Redux Toolkit — admin only (see below)
@@ -405,7 +407,7 @@ the current one as burned and **roll it in the Stripe dashboard**.
 ```bash
 # backend — needs MySQL (root, empty password), database `pizza`
 cd pizza-springboot-backend && ./mvnw spring-boot:run     # :8085, Swagger at /swagger-ui.html
-./mvnw test                                               # 60 tests
+./mvnw test                                               # 91 tests; 4 fail on stale seed data — see progress_report
 ./mvnw spotless:apply                                     # before committing Java
 
 # frontend — React

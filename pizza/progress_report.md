@@ -1491,6 +1491,69 @@ problem, not a project one.
   needs Accessibility permission for the terminal (`osascript` is refused with `-1719`), so
   browse → build → cart → checkout → order remains unverified on device.
 
+## Session — PIZZA-42: pay with a saved card at checkout (2026-10-04)
+
+Backend + `pizza-react-frontend` only. Commits: `1b0549a0` (lookup + expiry rule), `fb1105a0`
+(service + Stripe update), `03c16ae8` (endpoint), `64e300d5` (frontend helpers), `34784b02`
+(chooser), `5fe44211` (Playwright).
+
+### PO decisions
+- Signed-in customers only; guest checkout unchanged.
+- The card is chosen on the **payment step**, after the order exists.
+- On a decline the customer can pick another saved card or type a new one, **on the same order**.
+- The primary card is preselected. Expired cards are shown, disabled and labelled "Expired".
+- No CVC re-entry. An explicit "Pay $X with Visa ••4242" button. No card management at checkout.
+- **Saving a card at checkout is out of scope** — a separate ticket.
+
+### How it works
+- `PUT /api/orders/{id}/payment-method` takes **our** card UUID. The server checks the order is the
+  caller's and awaiting payment, and the card is the caller's, not deleted and not expired. It then
+  UPDATES the order's existing PaymentIntent with `customer` + `payment_method`. The `pm_` token
+  never reaches the browser.
+- The browser confirms with `stripe.confirmCardPayment(clientSecret)`, which also runs 3D Secure.
+  PAID is still set only by the webhook / payment-status poll, as for a typed card.
+- **The update has no idempotency key, deliberately.** A key per (order, card) would make
+  "card A, then B, then A" replay the first response and leave B on the intent. Setting the same two
+  fields twice is already safe to retry.
+- Not the caller's order or card → **404, never 403**. Not awaiting payment → 409. Expired → 400.
+- A request with **no token gets 403, not 401** — true of every protected endpoint here, because no
+  `AuthenticationEntryPoint` is configured. Left alone; it is app-wide.
+
+### Verified
+- **Backend: 91 tests, 87 pass.** All 31 new ones pass (`UserPaymentMethodDAOIntegrationTest` 4,
+  `UserPaymentMethodTest` 4, `CustomerOrderSavedCardTest` 15, `SavedCardPaymentApiIntegrationTest` 8).
+- **Playwright: `saved-card-checkout.spec.ts` 7/7** — primary preselected, expired card, "use a new
+  card", guests, and live Stripe: pay, decline-then-second-card on the same order, 3D Secure.
+  `npm run test:all`: 103 passed, 2 failed, 2 skipped.
+- Three tests were proven to fail against deliberately broken code (expiry rule, decline handling,
+  guest card loading), then the code was restored.
+- The chooser is a `fieldset` + `legend`, so the radio group is announced as "Pay with". Checked in
+  a real browser at 1280 and 390px.
+
+### ⚠️ Failures that pre-date PIZZA-42 (they fail on `main` too)
+- `CustomerOrderDAOIntegrationTest.filtersByStatus` expects 2 CANCELLED orders and finds 23. The
+  extra 21 are "Guest Diner" orders left by Playwright runs on 2026-08-20.
+- `ReportServiceImplTest` (3 tests) and `admin.spec.ts` (2 tests, the revenue line chart) report on
+  the last 30 days, and the seeded orders have aged out of that window. ⚠️ The seed already uses
+  `DATE_SUB(NOW(), …)` (`003-seed-orders.sql`), but `NOW()` ran once, when Liquibase applied the
+  changeset — on this machine order 1 is dated 2026-07-20. Root cause of the two soft-delete
+  failures (verified with SQL): the test picks its victim from `findAll()` with no date filter, so it
+  soft-deletes an order the report never counted. See the debugging session in
+  `projects/ai_engineering/sessions/09-debugging.md`.
+  The backend tests find no orders at all; the chart finds only today's test orders — one day, and
+  a line needs two points.
+
+### Still manual
+- **Decline, then a typed new card on the same order.** Stripe's card iframe cannot be automated
+  headlessly; decline-then-another-SAVED-card is covered.
+- Not exercised by anything: failing or cancelling a 3D Secure challenge, and the "that card is no
+  longer available" path (card deleted in another tab → 404 → list reloads).
+
+### Test data this leaves behind
+- Each run of `saved-card-checkout.spec.ts` leaves **7 orders** (4 PENDING_PAYMENT, one of them a
+  guest's; 3 PAID). Its saved cards are deleted, and detached at Stripe. Orders have no delete API.
+- `customer@pizza.test` now has a `stripe_customer_id` and a matching test-mode Stripe Customer.
+
 ## Still open
 
 - **Update Xcode.** 15.4 cannot compile an asset catalogue on this macOS, so the committed iOS
@@ -1501,8 +1564,22 @@ problem, not a project one.
   terminal, which has not been granted.
 - **The React Native app has never been run on a simulator or a device either** — same cause.
   Everything there is verified through the web target, Jest and the live API.
-- Checkout still does not offer saved cards, in ANY of the four frontends. Cards can be saved and managed on
-  the profile page; wiring "pay with a saved card" remains the natural next step.
+- **Pay with a saved card exists in `pizza-react-frontend` only** (PIZZA-42). The Angular, React
+  Native and SwiftUI checkouts still always collect a fresh card.
+- **Saving a card at checkout** — separate ticket, out of PIZZA-42. Cards are saved on the profile
+  page only.
+- **Error messages differ between the two payment paths.** `createOrder` returns Stripe's own
+  message ("Could not start payment: " + `ex.getMessage()`); the saved-card path logs it and returns
+  a generic one. Align `createOrder` with the saved-card path.
+- **Report tests depend on seed data aging.** Seeded order dates are fixed when the changeset is
+  applied, so every "last 30 days" test fails about a month after a database is created: up to 3 in
+  `ReportServiceImplTest`, 2 in `admin.spec.ts`. Re-seeding only restarts the countdown. Fix: each
+  test creates its own recent order inside its transaction and asserts the report counted it. Separately, leftover Playwright orders break
+  `CustomerOrderDAOIntegrationTest.filtersByStatus` — the specs that create them need to clean up.
+- Two tabs on one order: the saved card set last is charged (own cards only; no double charge).
+- Checkout: if the saved-card list loads late, the payment form swaps under the customer.
+- Saved card 404: if the list reload also fails, the "no longer available" message is hidden.
+- `useSavedPaymentMethod` calls Stripe inside its read-only transaction (documented trade-off).
 - The cart drawer does not trap focus (see above).
 - `httpResource` is marked `@experimental` in Angular 21. Used deliberately — it is the concept
   `MenuService` exists to teach — but it is a label to weigh before copying into production code.
